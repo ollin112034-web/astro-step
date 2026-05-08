@@ -32,6 +32,10 @@ export default {
       return json({ ok: true, service: 'astro-step-worker' });
     }
 
+    if (url.pathname === '/privacy') {
+      return html(PRIVACY_POLICY_HTML);
+    }
+
     if (url.pathname === '/journey' && request.method === 'POST') {
       try {
         const payload = await request.json();
@@ -447,3 +451,65 @@ function json(body, status = 200) {
     status,
   });
 }
+
+function html(body, status = 200) {
+  return new Response(body, {
+    headers: {
+      ...CORS_HEADERS,
+      'Content-Type': 'text/html; charset=utf-8',
+    },
+    status,
+  });
+}
+
+const PRIVACY_POLICY_HTML = `<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Astro Step 개인정보처리방침</title>
+  <style>
+    :root { color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    body { margin: 0; background: #020204; color: #fff; line-height: 1.7; }
+    main { box-sizing: border-box; margin: 0 auto; max-width: 760px; padding: 40px 22px 72px; }
+    h1 { font-size: 30px; line-height: 1.25; margin: 0 0 8px; }
+    h2 { font-size: 18px; margin: 30px 0 8px; }
+    p, li { color: rgba(255,255,255,.76); font-size: 15px; }
+    .meta { color: rgba(255,255,255,.54); font-size: 13px; margin-bottom: 28px; }
+    .card { background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.16); border-radius: 18px; padding: 18px; }
+    a { color: #dcd9ff; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Astro Step 개인정보처리방침</h1>
+    <p class="meta">시행일: 2026년 5월 8일</p>
+    <section class="card">
+      <p>Astro Step은 사용자의 걸음 수를 우주 여행 거리로 환산하기 위해 필요한 최소한의 정보만 수집하고 사용합니다.</p>
+    </section>
+
+    <h2>1. 수집하는 정보</h2>
+    <ul>
+      <li>계정 정보: 이메일 주소, 로그인 제공자 정보</li>
+      <li>사용자 입력 정보: 생년월일</li>
+      <li>건강 데이터: 걸음 수, 이동 거리, 기간별 활동 요약</li>
+      <li>서비스 운영 정보: 요청 시각, 오류 로그 등 서비스 안정성에 필요한 기술 정보</li>
+    </ul>
+
+    <h2>2. 이용 목적</h2>
+    <p>수집한 정보는 회원가입 및 로그인, 누적 걸음 수 계산, 우주 거리 환산, 개인 여정 화면 제공, 서비스 오류 분석에 사용됩니다.</p>
+
+    <h2>3. 건강 데이터 처리</h2>
+    <p>건강 앱 연동은 사용자가 명시적으로 동의한 경우에만 수행됩니다. Astro Step은 걸음 수와 거리 계산에 필요한 데이터만 읽으며, 건강 앱에 데이터를 쓰지 않습니다.</p>
+
+    <h2>4. 보관 기간</h2>
+    <p>계정 정보와 서비스 이용 정보는 회원 탈퇴 또는 삭제 요청 시까지 보관합니다. 법령상 보관이 필요한 정보는 해당 기간 동안 별도 보관할 수 있습니다.</p>
+
+    <h2>5. 제3자 제공</h2>
+    <p>Astro Step은 사용자의 동의 없이 개인정보를 제3자에게 제공하지 않습니다. 다만 법령에 따른 요청이 있는 경우 예외가 있을 수 있습니다.</p>
+
+    <h2>6. 문의</h2>
+    <p>개인정보 관련 문의는 앱 운영자에게 문의해 주세요.</p>
+  </main>
+</body>
+</html>`;

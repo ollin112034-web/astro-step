@@ -35,9 +35,10 @@ import { calculateAstroJourney, type AstroJourneySummary } from '@/services/astr
 
 WebBrowser.maybeCompleteAuthSession();
 
-type Step = 'splash' | 'login' | 'privacy' | 'health' | 'birthday' | 'calculating' | 'main';
+type Step = 'splash' | 'login' | 'privacy' | 'birthday' | 'calculating' | 'main';
 
-const shaderBackgroundSteps: Step[] = ['login', 'privacy', 'health', 'birthday', 'calculating'];
+const PRIVACY_POLICY_URL = 'https://astro-step-app.astro-step.workers.dev/privacy';
+const shaderBackgroundSteps: Step[] = ['login', 'privacy', 'birthday', 'calculating'];
 
 const journeyPoints = [
   { label: '지구', progress: 0, active: false },
@@ -170,12 +171,11 @@ export default function HomeScreen() {
           }}
         />
       )}
-      {step === 'privacy' && <PrivacyScreen onBack={() => setStep('login')} onNext={() => setStep('health')} />}
-      {step === 'health' && (
-        <HealthScreen
+      {step === 'privacy' && (
+        <PrivacyScreen
           healthStatus={healthStatus}
           healthSummary={healthSummary}
-          onBack={() => setStep('privacy')}
+          onBack={() => setStep('login')}
           onConnect={handleHealthConnect}
           onSkip={() => setStep('birthday')}
         />
@@ -185,7 +185,7 @@ export default function HomeScreen() {
           canContinue={canContinueBirthday}
           day={day}
           month={month}
-          onBack={() => setStep('health')}
+          onBack={() => setStep('privacy')}
           onChangeDay={setDay}
           onChangeMonth={setMonth}
           onChangeYear={setYear}
@@ -570,48 +570,7 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: (session: AuthSessi
   );
 }
 
-function PrivacyScreen({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
-  return (
-    <CenteredPanel>
-      <View style={styles.panelHeaderRow}>
-        <Pressable
-          accessibilityLabel="로그인 화면으로 돌아가기"
-          onPress={onBack}
-          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
-          <Ionicons name="chevron-back" size={28} color="#FFFFFF" />
-        </Pressable>
-        <Text style={styles.panelTitleSmall}>개인정보 처리 약관</Text>
-        <View style={styles.headerSpacer} />
-      </View>
-      <Text style={styles.panelCopy}>
-        Astro Step은 걸음 수와 생년월일을 우주 여행 거리 계산에만 사용합니다.
-      </Text>
-      <View style={styles.policyBox}>
-        <PolicyItem number="1" title="수집하는 개인정보 항목">
-          이름, 이메일, 생년월일, 걸음 수 및 건강 데이터, 기기 정보
-        </PolicyItem>
-        <PolicyItem number="2" title="개인정보 수집 및 이용 목적">
-          걸음 수 데이터 분석을 통한 우주여행 거리 계산, 맞춤형 서비스 제공
-        </PolicyItem>
-        <PolicyItem number="3" title="개인정보 보유 및 이용 기간">
-          회원 탈퇴 시까지 보관하며, 관계 법령에 따라 필요한 경우만 별도 보관합니다.
-        </PolicyItem>
-        <PolicyItem number="4" title="개인정보 제3자 제공">
-          사용자의 동의 없이 제3자에게 개인정보를 제공하지 않습니다.
-        </PolicyItem>
-      </View>
-      <View style={styles.checkRow}>
-        <View style={styles.checkCircle}>
-          <Ionicons name="checkmark" size={18} color="#FFFFFF" />
-        </View>
-        <Text style={styles.checkText}>위 내용을 모두 확인하였으며 동의합니다.</Text>
-      </View>
-      <PrimaryButton label="동의하고 계속하기" onPress={onNext} />
-    </CenteredPanel>
-  );
-}
-
-function HealthScreen({
+function PrivacyScreen({
   healthStatus,
   healthSummary,
   onBack,
@@ -629,19 +588,37 @@ function HealthScreen({
 
   return (
     <CenteredPanel>
-      <PanelBackHeader label="개인정보 화면으로 돌아가기" onBack={onBack} />
+      <PanelBackHeader label="로그인 화면으로 돌아가기" onBack={onBack} />
       <View style={styles.healthIconWrap}>
         <View style={styles.healthIcon}>
           <Ionicons name="heart" size={34} color="#ff3b65" />
         </View>
       </View>
-      <Text style={styles.panelTitle}>건강 앱 연동</Text>
-      <Text style={styles.panelCopy}>정확한 우주 여행 계산을 위해 건강 데이터를 연결합니다.</Text>
+      <Text style={styles.panelTitle}>개인정보 동의</Text>
+      <Text style={styles.panelCopy}>
+        Astro Step은 이메일, 생년월일, 걸음 수를 우주 여행 거리 계산에만 사용합니다.
+      </Text>
+      <View style={styles.policySummaryCard}>
+        <PolicyItem number="1" title="수집 항목">
+          이메일, 생년월일, 걸음 수 및 거리 데이터
+        </PolicyItem>
+        <PolicyItem number="2" title="이용 목적">
+          누적 걸음 수를 우주 거리로 환산하고 개인 여정을 계산합니다.
+        </PolicyItem>
+        <PolicyItem number="3" title="보호 원칙">
+          동의 없이 제3자에게 개인정보를 제공하지 않습니다.
+        </PolicyItem>
+        <Pressable
+          onPress={() => WebBrowser.openBrowserAsync(PRIVACY_POLICY_URL)}
+          style={({ pressed }) => [styles.policyLinkButton, pressed && styles.pressed]}>
+          <Text style={styles.policyLinkText}>개인정보처리방침 전문 보기</Text>
+          <Ionicons name="open-outline" size={18} color="#DCD9FF" />
+        </Pressable>
+      </View>
       <View style={styles.permissionCard}>
-        <Text style={styles.permissionTitle}>연동을 통해 다음 데이터를 사용해요</Text>
+        <Text style={styles.permissionTitle}>건강 앱 연동 데이터</Text>
         <PermissionRow icon="footsteps-outline" title="걸음 수" copy="일일 걸음 수 및 전체 걸음 수" />
-        <PermissionRow icon="bar-chart-outline" title="활동 데이터" copy="걷기 및 러닝 등 활동 기록" />
-        <PermissionRow icon="calendar-outline" title="기간 데이터" copy="과거 기록 포함 모든 기간 데이터" />
+        <PermissionRow icon="bar-chart-outline" title="거리 데이터" copy="걷기 거리 계산에 필요한 데이터" />
       </View>
       <View style={styles.safeDataCard}>
         <Ionicons
@@ -669,11 +646,11 @@ function HealthScreen({
       ) : null}
       <PrimaryButton
         disabled={isLoading}
-        label={isLoading ? '연결 중' : isConnected ? '다음' : '건강 앱 연결하기'}
+        label={isLoading ? '연결 중' : isConnected ? '다음' : '동의하고 건강 앱 연결하기'}
         onPress={isConnected ? onSkip : onConnect}
       />
       <Pressable onPress={onSkip} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
-        <Text style={styles.secondaryButtonText}>나중에 하기</Text>
+        <Text style={styles.secondaryButtonText}>건강 앱 없이 계속하기</Text>
       </Pressable>
     </CenteredPanel>
   );
@@ -1181,8 +1158,11 @@ const styles = StyleSheet.create({
   policyBody: { color: 'rgba(255,255,255,0.68)', fontSize: 12, lineHeight: 18, marginTop: 3 },
   policyBox: { borderColor: 'rgba(255,255,255,0.18)', borderRadius: 18, borderWidth: 1, gap: 13, maxHeight: 360, padding: 14, width: '100%' },
   policyItem: { flexDirection: 'row', gap: 10 },
+  policyLinkButton: { alignItems: 'center', alignSelf: 'flex-start', flexDirection: 'row', gap: 6, marginTop: 2, paddingVertical: 4 },
+  policyLinkText: { color: '#DCD9FF', fontSize: 13, fontWeight: '800', textDecorationLine: 'underline' },
   policyNumber: { alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 999, height: 28, justifyContent: 'center', width: 28 },
   policyNumberText: { color: '#FFFFFF', fontSize: 13 },
+  policySummaryCard: { borderColor: 'rgba(255,255,255,0.18)', borderRadius: 18, borderWidth: 1, gap: 12, padding: 14, width: '100%' },
   policyText: { flex: 1 },
   policyTitle: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
   pressed: { opacity: 0.72, transform: [{ scale: 0.99 }] },
