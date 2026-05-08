@@ -1,0 +1,7 @@
+name = "astro-step-app"
+main = "workers/workers.js"
+compatibility_date = "2026-05-03"
+
+[[kv_namespaces]]
+binding = "AUTH_STORE"
+id = "REPLACE_WITH_AUTH_STORE_KV_NAMESPACE_ID"

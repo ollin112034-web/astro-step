@@ -9,9 +9,19 @@
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSHealthShareUsageDescription": "Astro Step uses your step count to calculate your cosmic journey distance.",
+        "NSHealthUpdateUsageDescription": "Astro Step does not write health data."
+      },
+      "bundleIdentifier": "com.choiyongwon.astrostep"
     },
     "android": {
+      "permissions": [
+        "android.permission.health.READ_STEPS",
+        "android.permission.health.READ_DISTANCE"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#020204",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -19,7 +29,8 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.choiyongwon.astrostep"
     },
     "web": {
       "output": "static",
@@ -28,21 +39,43 @@
     "plugins": [
       "expo-router",
       [
+        "react-native-health",
+        {
+          "healthSharePermission": "Astro Step uses your step count to calculate your cosmic journey distance.",
+          "healthUpdatePermission": "Astro Step does not write health data."
+        }
+      ],
+      "expo-health-connect",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35,
+            "minSdkVersion": 26
+          }
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#020204",
-          "dark": {
-            "backgroundColor": "#000000"
-          }
+          "backgroundColor": "#020204"
         }
       ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "astroApiUrl": "https://astro-step-app.astro-step.workers.dev",
+      "eas": {
+        "projectId": "8be16554-5b0d-4a7e-a213-22e6f2c31432"
+      }
     }
   }
 }
