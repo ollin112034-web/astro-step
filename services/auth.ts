@@ -6,6 +6,8 @@ export type AuthUser = {
   id: string;
   email: string;
   createdAt: string;
+  name?: string;
+  picture?: string;
 };
 
 export type AuthSession = {
@@ -21,6 +23,23 @@ export async function signUpWithEmail(email: string, password: string): Promise<
 
 export async function signInWithEmail(email: string, password: string): Promise<AuthSession> {
   return requestAuth('/auth/login', email, password);
+}
+
+export async function signInWithGoogle(idToken: string): Promise<AuthSession> {
+  const response = await fetch(`${getAstroApiUrl()}/auth/google`, {
+    body: JSON.stringify({ idToken }),
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    method: 'POST',
+  });
+  const payload = (await response.json()) as AuthResponse;
+
+  if (!response.ok || 'error' in payload) {
+    throw new Error('error' in payload ? payload.error : 'Google 로그인에 실패했습니다.');
+  }
+
+  return payload;
 }
 
 async function requestAuth(path: string, email: string, password: string) {

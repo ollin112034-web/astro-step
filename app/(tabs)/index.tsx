@@ -1,5 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
+import * as Google from 'expo-auth-session/providers/google';
 import { useNavigation } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
@@ -24,10 +27,13 @@ import {
 } from '@/services/health';
 import {
   signInWithEmail,
+  signInWithGoogle,
   signUpWithEmail,
   type AuthSession,
 } from '@/services/auth';
 import { calculateAstroJourney, type AstroJourneySummary } from '@/services/astroBackend';
+
+WebBrowser.maybeCompleteAuthSession();
 
 type Step = 'splash' | 'login' | 'privacy' | 'health' | 'birthday' | 'calculating' | 'main';
 
@@ -365,6 +371,22 @@ function Logo({ compact = false, large = false }: { compact?: boolean; large?: b
   );
 }
 
+function getGoogleClientIds() {
+  const extra = Constants.expoConfig?.extra as
+    | {
+        googleOAuthAndroidClientId?: string;
+        googleOAuthIosClientId?: string;
+        googleOAuthWebClientId?: string;
+      }
+    | undefined;
+
+  return {
+    androidClientId: extra?.googleOAuthAndroidClientId?.trim() ?? '',
+    iosClientId: extra?.googleOAuthIosClientId?.trim() ?? '',
+    webClientId: extra?.googleOAuthWebClientId?.trim() ?? '',
+  };
+}
+
 function SplashScreen() {
   return (
     <View style={styles.splash}>
@@ -374,16 +396,65 @@ function SplashScreen() {
 }
 
 function LoginScreen({ onAuthenticated }: { onAuthenticated: (session: AuthSession) => void }) {
+  const googleClientIds = getGoogleClientIds();
+  const googleOAuthConfigured = Object.values(googleClientIds).some(Boolean);
+  const [, googleResponse, promptGoogleAsync] = Google.useIdTokenAuthRequest({
+    androidClientId: googleClientIds.androidClientId || undefined,
+    clientId: googleClientIds.webClientId || googleClientIds.iosClientId || googleClientIds.androidClientId || 'missing-google-client-id',
+    iosClientId: googleClientIds.iosClientId || undefined,
+    selectAccount: true,
+    webClientId: googleClientIds.webClientId || undefined,
+  });
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [authStatus, setAuthStatus] = useState<'idle' | 'loading'>('idle');
   const [authMessage, setAuthMessage] = useState('');
   const isSignup = authMode === 'signup';
   const isLoading = authStatus === 'loading';
 
+  useEffect(() => {
+    const idToken = googleResponse?.type === 'success' ? googleResponse.params.id_token : null;
+
+    if (!idToken) {
+      return;
+    }
+
+    let cancelled = false;
+
+    setAuthMessage('');
+    setAuthStatus('loading');
+    signInWithGoogle(idToken)
+      .then((session) => {
+        if (!cancelled) {
+          onAuthenticated(session);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setAuthMessage(error instanceof Error ? error.message : 'Google 로그인에 실패했습니다.');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setAuthStatus('idle');
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [googleResponse, onAuthenticated]);
+
   const handleEmailAuth = async () => {
     setAuthMessage('');
+
+    if (isSignup && password !== confirmPassword) {
+      setAuthMessage('비밀번호가 일치하지 않습니다.');
+      return;
+    }
+
     setAuthStatus('loading');
 
     try {
@@ -398,6 +469,21 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: (session: AuthSessi
     }
   };
 
+  const handleGoogleAuth = async () => {
+    setAuthMessage('');
+
+    if (!googleOAuthConfigured) {
+      setAuthMessage('Google OAuth 클라이언트 ID 설정이 필요합니다.');
+      return;
+    }
+
+    try {
+      await promptGoogleAsync();
+    } catch (error) {
+      setAuthMessage(error instanceof Error ? error.message : 'Google 로그인 창을 열 수 없습니다.');
+    }
+  };
+
   return (
     <CenteredPanel panelStyle={styles.loginGlassPanel}>
       <View style={styles.loginHeader}>
@@ -406,7 +492,9 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: (session: AuthSessi
             <Logo large />
           </View>
           <Text style={styles.loginTitle}>{isSignup ? '회원가입' : '계정 로그인'}</Text>
-          <Text style={styles.loginDescription}>계정으로 로그인하여{'\n'}우주여행을 시작하세요.</Text>
+          <Text style={styles.loginDescription}>
+            {isSignup ? '새 계정을 만들어 우주여행을 시작하세요.' : '계정으로 로그인하여\n우주여행을 시작하세요.'}
+          </Text>
         </View>
       </View>
 
@@ -440,13 +528,27 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: (session: AuthSessi
           <TextInput
             editable={!isLoading}
             onChangeText={setPassword}
-            placeholder="비밀번호"
+            placeholder="8자 이상"
             placeholderTextColor="rgba(255,255,255,0.36)"
             secureTextEntry
             style={styles.textInputGlass}
             value={password}
           />
         </View>
+        {isSignup && (
+          <View style={styles.loginField}>
+            <Text style={styles.fieldLabel}>비밀번호 확인</Text>
+            <TextInput
+              editable={!isLoading}
+              onChangeText={setConfirmPassword}
+              placeholder="비밀번호를 다시 입력"
+              placeholderTextColor="rgba(255,255,255,0.36)"
+              secureTextEntry
+              style={styles.textInputGlass}
+              value={confirmPassword}
+            />
+          </View>
+        )}
       </View>
 
       {authMessage ? <Text style={styles.authMessage}>{authMessage}</Text> : null}
@@ -462,7 +564,7 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: (session: AuthSessi
         )}
       </Pressable>
 
-      <AuthButton icon="logo-google" label="Google 계정으로 로그인" onPress={() => setAuthMessage('Google 로그인은 아직 준비 중입니다.')} />
+      <AuthButton icon="logo-google" label="Google 계정으로 로그인" onPress={handleGoogleAuth} />
       <AuthButton icon="logo-apple" label="Apple 계정으로 로그인" onPress={() => setAuthMessage('Apple 로그인은 아직 준비 중입니다.')} />
     </CenteredPanel>
   );

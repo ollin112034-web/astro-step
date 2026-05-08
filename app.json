@@ -73,6 +73,9 @@
     "extra": {
       "router": {},
       "astroApiUrl": "https://astro-step-app.astro-step.workers.dev",
+      "googleOAuthWebClientId": "",
+      "googleOAuthIosClientId": "",
+      "googleOAuthAndroidClientId": "",
       "eas": {
         "projectId": "8be16554-5b0d-4a7e-a213-22e6f2c31432"
       }

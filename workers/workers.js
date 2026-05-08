@@ -48,6 +48,10 @@ export default {
       return handleLogin(request, env);
     }
 
+    if (url.pathname === '/auth/google' && request.method === 'POST') {
+      return handleGoogleLogin(request, env);
+    }
+
     return json({ error: 'Not found' }, 404);
   },
 };
@@ -110,6 +114,54 @@ async function handleLogin(request, env) {
   return createSessionResponse(store, user);
 }
 
+async function handleGoogleLogin(request, env) {
+  try {
+    const store = getAuthStore(env);
+
+    if (!store) {
+      return json({ error: 'Auth storage is not configured.' }, 500);
+    }
+
+    const payload = await readAuthPayload(request);
+    const idToken = typeof payload?.idToken === 'string' ? payload.idToken.trim() : '';
+
+    if (!idToken) {
+      return json({ error: 'Google 인증 토큰이 필요합니다.' }, 400);
+    }
+
+    const googleProfile = await verifyGoogleIdToken(idToken, env);
+    const googleKey = `google:${googleProfile.sub}`;
+    const email = normalizeEmail(googleProfile.email);
+    const existingGoogleUser = await store.get(googleKey, 'json');
+    const existingEmailUser = await store.get(userKey(email), 'json');
+    const user =
+      existingGoogleUser ||
+      existingEmailUser || {
+        createdAt: new Date().toISOString(),
+        email,
+        id: crypto.randomUUID(),
+        provider: 'google',
+      };
+
+    const nextUser = {
+      ...user,
+      email,
+      googleSub: googleProfile.sub,
+      name: googleProfile.name || user.name || '',
+      picture: googleProfile.picture || user.picture || '',
+      provider: user.provider || 'google',
+      updatedAt: new Date().toISOString(),
+    };
+
+    await store.put(googleKey, JSON.stringify(nextUser));
+    await store.put(userKey(email), JSON.stringify(nextUser));
+
+    return createSessionResponse(store, nextUser);
+  } catch (error) {
+    return json({ error: error instanceof Error ? error.message : 'Google 로그인에 실패했습니다.' }, 400);
+  }
+}
+
 async function readAuthPayload(request) {
   try {
     return await request.json();
@@ -145,6 +197,38 @@ function getAuthStore(env) {
   return env.AUTH_STORE || env.AstroAuthStore || null;
 }
 
+async function verifyGoogleIdToken(idToken, env) {
+  const response = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
+
+  if (!response.ok) {
+    throw new Error('Google 토큰 검증에 실패했습니다.');
+  }
+
+  const profile = await response.json();
+  const allowedAudiences = String(env.GOOGLE_CLIENT_IDS || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  if (allowedAudiences.length === 0) {
+    throw new Error('Google OAuth client ID is not configured on the Worker.');
+  }
+
+  if (!allowedAudiences.includes(profile.aud)) {
+    throw new Error('허용되지 않은 Google OAuth 클라이언트입니다.');
+  }
+
+  if (!profile.sub || !profile.email) {
+    throw new Error('Google 계정 정보를 확인할 수 없습니다.');
+  }
+
+  if (profile.email_verified !== 'true' && profile.email_verified !== true) {
+    throw new Error('Google 이메일 인증이 필요합니다.');
+  }
+
+  return profile;
+}
+
 async function createSessionResponse(store, user) {
   const token = generateToken();
   const session = {
@@ -165,6 +249,8 @@ function sanitizeUser(user) {
     createdAt: user.createdAt,
     email: user.email,
     id: user.id,
+    name: user.name || '',
+    picture: user.picture || '',
   };
 }
 

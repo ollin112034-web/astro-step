@@ -1,7 +1,11 @@
 name = "astro-step-app"
 main = "workers/workers.js"
 compatibility_date = "2026-05-03"
+account_id = "8eb2ada33a279c4a2dad2eac3ab1c4dd"
+
+[vars]
+GOOGLE_CLIENT_IDS = ""
 
 [[kv_namespaces]]
 binding = "AUTH_STORE"
-id = "REPLACE_WITH_AUTH_STORE_KV_NAMESPACE_ID"
+id = "aa86b32fac214527853ad15dc83442a4"
