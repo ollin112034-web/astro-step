@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Animated,
   Easing,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -390,7 +391,11 @@ function getGoogleClientIds() {
 function SplashScreen() {
   return (
     <View style={styles.splash}>
-      <Logo large />
+      <Image
+        resizeMode="cover"
+        source={require('../../reference-ui/0.타이틀이미지.png')}
+        style={styles.splashImage}
+      />
     </View>
   );
 }
@@ -1217,7 +1222,8 @@ const styles = StyleSheet.create({
   solarOrbitTwo: { height: 320, width: 320 },
   solarSystem: { alignItems: 'center', height: 500, justifyContent: 'center', marginTop: 18, width: '100%' },
   spark: { color: '#FFFFFF', fontSize: 16, textShadowColor: '#FFFFFF', textShadowRadius: 10 },
-  splash: { alignItems: 'center', flex: 1, justifyContent: 'center', padding: 24 },
+  splash: { backgroundColor: '#020204', flex: 1 },
+  splashImage: { height: '100%', width: '100%' },
   splashPlanet: { backgroundColor: 'rgba(255,255,255,0.72)', borderRadius: 999, position: 'absolute' },
   star: { backgroundColor: '#FFFFFF', borderRadius: 999, height: 2, position: 'absolute', width: 2 },
   starField: { ...StyleSheet.absoluteFillObject },
