@@ -8,6 +8,7 @@ const STEP_TO_COSMIC_KM = 7.5;
 const FALLBACK_DAILY_STEPS = 7842;
 const WALKING_KM_PER_STEP = 0.00075;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const PASSWORD_HASH_ITERATIONS = 60000;
 
 const DESTINATIONS = [
   { name: '지구', routeName: 'EARTH ORBIT', distanceKm: 0 },
@@ -41,20 +42,29 @@ export default {
     }
 
     if (url.pathname === '/auth/signup' && request.method === 'POST') {
-      return handleSignup(request, env);
+      return runAuthHandler(() => handleSignup(request, env));
     }
 
     if (url.pathname === '/auth/login' && request.method === 'POST') {
-      return handleLogin(request, env);
+      return runAuthHandler(() => handleLogin(request, env));
     }
 
     if (url.pathname === '/auth/google' && request.method === 'POST') {
-      return handleGoogleLogin(request, env);
+      return runAuthHandler(() => handleGoogleLogin(request, env));
     }
 
     return json({ error: 'Not found' }, 404);
   },
 };
+
+async function runAuthHandler(handler) {
+  try {
+    return await handler();
+  } catch (error) {
+    console.error('Auth handler failed', error);
+    return json({ error: '인증 처리 중 서버 오류가 발생했습니다.' }, 500);
+  }
+}
 
 async function handleSignup(request, env) {
   const store = getAuthStore(env);
@@ -288,7 +298,7 @@ async function derivePasswordHash(password, saltHex) {
   const bits = await crypto.subtle.deriveBits(
     {
       hash: 'SHA-256',
-      iterations: 150000,
+      iterations: PASSWORD_HASH_ITERATIONS,
       name: 'PBKDF2',
       salt: hexToBytes(saltHex),
     },
