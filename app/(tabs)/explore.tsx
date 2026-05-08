@@ -1,112 +1,195 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { Collapsible } from '@/components/ui/collapsible';
-import { ExternalLink } from '@/components/external-link';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Fonts } from '@/constants/theme';
+const detailGroups = [
+  {
+    title: '지구 좌표',
+    rows: [
+      ['위도 보정', '+37.5665'],
+      ['경도 보정', '+126.9780'],
+      ['자전 속도', '0.38 km/s'],
+    ],
+  },
+  {
+    title: '태양계 좌표',
+    rows: [
+      ['태양 기준 거리', '1.000042 AU'],
+      ['공전 위상', '128.4 deg'],
+      ['일일 변위', '2,574,000 km'],
+    ],
+  },
+  {
+    title: '은하 좌표',
+    rows: [
+      ['은하 중심 거리', '26,660 ly'],
+      ['회전 속도', '220 km/s'],
+      ['누적 이동', '6.94e+12 km'],
+    ],
+  },
+];
 
-export default function TabTwoScreen() {
+export default function DetailScreen() {
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#D0D0D0', dark: '#353636' }}
-      headerImage={
-        <IconSymbol
-          size={310}
-          color="#808080"
-          name="chevron.left.forwardslash.chevron.right"
-          style={styles.headerImage}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText
-          type="title"
-          style={{
-            fontFamily: Fonts.rounded,
-          }}>
-          Explore
-        </ThemedText>
-      </ThemedView>
-      <ThemedText>This app includes example code to help you get started.</ThemedText>
-      <Collapsible title="File-based routing">
-        <ThemedText>
-          This app has two screens:{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/explore.tsx</ThemedText>
-        </ThemedText>
-        <ThemedText>
-          The layout file in <ThemedText type="defaultSemiBold">app/(tabs)/_layout.tsx</ThemedText>{' '}
-          sets up the tab navigator.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/router/introduction">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Android, iOS, and web support">
-        <ThemedText>
-          You can open this project on Android, iOS, and the web. To open the web version, press{' '}
-          <ThemedText type="defaultSemiBold">w</ThemedText> in the terminal running this project.
-        </ThemedText>
-      </Collapsible>
-      <Collapsible title="Images">
-        <ThemedText>
-          For static images, you can use the <ThemedText type="defaultSemiBold">@2x</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">@3x</ThemedText> suffixes to provide files for
-          different screen densities
-        </ThemedText>
-        <Image
-          source={require('@/assets/images/react-logo.png')}
-          style={{ width: 100, height: 100, alignSelf: 'center' }}
-        />
-        <ExternalLink href="https://reactnative.dev/docs/images">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Light and dark mode components">
-        <ThemedText>
-          This template has light and dark mode support. The{' '}
-          <ThemedText type="defaultSemiBold">useColorScheme()</ThemedText> hook lets you inspect
-          what the user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Animations">
-        <ThemedText>
-          This template includes an example of an animated component. The{' '}
-          <ThemedText type="defaultSemiBold">components/HelloWave.tsx</ThemedText> component uses
-          the powerful{' '}
-          <ThemedText type="defaultSemiBold" style={{ fontFamily: Fonts.mono }}>
-            react-native-reanimated
-          </ThemedText>{' '}
-          library to create a waving hand animation.
-        </ThemedText>
-        {Platform.select({
-          ios: (
-            <ThemedText>
-              The <ThemedText type="defaultSemiBold">components/ParallaxScrollView.tsx</ThemedText>{' '}
-              component provides a parallax effect for the header image.
-            </ThemedText>
-          ),
-        })}
-      </Collapsible>
-    </ParallaxScrollView>
+    <View style={styles.root}>
+      <View style={styles.starOne} />
+      <View style={styles.starTwo} />
+      <SafeAreaView style={styles.safe}>
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <View style={styles.headerIcon}>
+            <Ionicons name="analytics-outline" size={34} color="#FFFFFF" />
+          </View>
+          <Text style={styles.caption}>ASTRO STEP TELEMETRY</Text>
+          <Text style={styles.title}>상세 수치</Text>
+          <Text style={styles.body}>걸음 수를 지구, 태양계, 은하 기준 좌표계로 나누어 표시합니다.</Text>
+
+          <View style={styles.summaryPanel}>
+            <Text style={styles.summaryLabel}>TOTAL COSMIC DISTANCE</Text>
+            <Text style={styles.summaryValue}>14,982,441,093 km</Text>
+            <Text style={styles.summaryCopy}>출생 기준점부터 현재까지 추정된 누적 이동 거리</Text>
+          </View>
+
+          {detailGroups.map((group) => (
+            <View key={group.title} style={styles.group}>
+              <Text style={styles.groupTitle}>{group.title}</Text>
+              {group.rows.map(([label, value]) => (
+                <View key={label} style={styles.row}>
+                  <Text style={styles.rowLabel}>{label}</Text>
+                  <Text style={styles.rowValue}>{value}</Text>
+                </View>
+              ))}
+            </View>
+          ))}
+        </ScrollView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  headerImage: {
-    color: '#808080',
-    bottom: -90,
-    left: -35,
-    position: 'absolute',
+  body: {
+    color: 'rgba(255,255,255,0.66)',
+    fontSize: 15,
+    lineHeight: 23,
+    marginTop: 12,
+    textAlign: 'center',
   },
-  titleContainer: {
+  caption: {
+    color: 'rgba(255,255,255,0.54)',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0,
+    textAlign: 'center',
+  },
+  content: {
+    alignItems: 'center',
+    padding: 22,
+    paddingBottom: 120,
+  },
+  group: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.16)',
+    borderRadius: 26,
+    borderWidth: 1,
+    marginTop: 14,
+    padding: 18,
+    width: '100%',
+  },
+  groupTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '900',
+    marginBottom: 8,
+  },
+  headerIcon: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 34,
+    borderWidth: 1,
+    height: 68,
+    justifyContent: 'center',
+    marginBottom: 18,
+    marginTop: 12,
+    width: 68,
+  },
+  root: {
+    backgroundColor: '#020204',
+    flex: 1,
+  },
+  row: {
+    alignItems: 'center',
+    borderTopColor: 'rgba(255,255,255,0.08)',
+    borderTopWidth: 1,
     flexDirection: 'row',
-    gap: 8,
+    justifyContent: 'space-between',
+    minHeight: 44,
+  },
+  rowLabel: {
+    color: 'rgba(255,255,255,0.52)',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  rowValue: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  safe: {
+    flex: 1,
+  },
+  starOne: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 999,
+    height: 4,
+    left: 42,
+    opacity: 0.7,
+    position: 'absolute',
+    top: 126,
+    width: 4,
+  },
+  starTwo: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 999,
+    height: 2,
+    opacity: 0.6,
+    position: 'absolute',
+    right: 58,
+    top: 284,
+    width: 2,
+  },
+  summaryCopy: {
+    color: 'rgba(255,255,255,0.52)',
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 8,
+  },
+  summaryLabel: {
+    color: 'rgba(255,255,255,0.48)',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  summaryPanel: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 30,
+    borderWidth: 1,
+    marginTop: 26,
+    padding: 22,
+    width: '100%',
+  },
+  summaryValue: {
+    color: '#FFFFFF',
+    fontSize: 30,
+    fontWeight: '900',
+    letterSpacing: 0,
+    marginTop: 10,
+  },
+  title: {
+    color: '#FFFFFF',
+    fontSize: 34,
+    fontWeight: '900',
+    letterSpacing: 0,
+    marginTop: 10,
+    textAlign: 'center',
   },
 });
