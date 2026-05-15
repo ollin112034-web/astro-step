@@ -8,16 +8,23 @@ import type { ReactNode } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  BackHandler,
   Easing,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   Platform,
+  PanResponder,
   Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  TouchableWithoutFeedback,
+  useWindowDimensions,
   View,
 } from 'react-native';
 
@@ -36,10 +43,11 @@ import { calculateAstroJourney, type AstroJourneySummary } from '@/services/astr
 
 WebBrowser.maybeCompleteAuthSession();
 
-type Step = 'splash' | 'login' | 'privacy' | 'birthday' | 'calculating' | 'main';
+type Step = 'splash' | 'onboarding' | 'terms' | 'login' | 'health' | 'birthday' | 'calculating' | 'main';
 
 const PRIVACY_POLICY_URL = 'https://astro-step-app.astro-step.workers.dev/privacy';
-const shaderBackgroundSteps: Step[] = ['login', 'privacy', 'birthday', 'calculating'];
+const TERMS_OF_SERVICE_URL = 'https://astro-step-app.astro-step.workers.dev/terms';
+const shaderBackgroundSteps: Step[] = [];
 
 const journeyPoints = [
   { label: '지구', progress: 0, active: false },
@@ -50,15 +58,6 @@ const journeyPoints = [
   { label: '심우주', progress: 100, active: false },
 ];
 
-const calculationSteps = [
-  ['heart-outline', '건강 데이터 가져오기', 'iOS 건강 앱 / Android 건강 앱에서 걸음 데이터를 준비 중...'],
-  ['stats-chart-outline', '데이터 통계 분석', '전체 걸음 수 및 일일 평균 걸음 수 계산 중...'],
-  ['calculator-outline', '우주 거리로 환산', '1보 = 7.5km 기준으로 변환 중...'],
-  ['rocket-outline', '나이 기반 보정 계산', '데이터가 없는 기간을 평균값으로 보정 중...'],
-  ['planet-outline', '최종 거리 합산', '1세부터 현재까지의 전체 거리 합산 중...'],
-  ['locate-outline', '현재 우주 위치 계산', '태양계 경로 상의 현재 위치를 찾고 있어요...'],
-] as const;
-
 const nearbyBodies = [
   ['이오', '1.2M km'],
   ['유로파', '2.1M km'],
@@ -66,10 +65,33 @@ const nearbyBodies = [
   ['칼리스토', '6.2M km'],
 ];
 
+const onboardingPages = [
+  {
+    icon: 'footsteps-outline',
+    subtitle: '건강 데이터와 추정 기록을 합쳐\n생애 누적 걸음을 보여드려요',
+    title: '당신의 지구 여정\n걸음으로 기록하세요',
+  },
+  {
+    icon: 'rocket-outline',
+    subtitle: '하루의 걸음이 모여\n당신만의 우주 항해 거리가 됩니다',
+    title: '걸음이 쌓이면\n우주가 열립니다',
+  },
+  {
+    icon: 'planet-outline',
+    subtitle: '누적 걸음을 우주 거리로 바꿔\n현재 위치를 보여드릴게요',
+    title: '지금 당신은\n어디쯤 걷고 있을까요?',
+  },
+] as const satisfies readonly {
+  icon: keyof typeof Ionicons.glyphMap;
+  subtitle: string;
+  title: string;
+}[];
+
 export default function HomeScreen() {
   const navigation = useNavigation();
   const calculationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [step, setStep] = useState<Step>('splash');
+  const [authEntryMode, setAuthEntryMode] = useState<'login' | 'signup'>('login');
   const [year, setYear] = useState('');
   const [month, setMonth] = useState('');
   const [day, setDay] = useState('');
@@ -103,7 +125,7 @@ export default function HomeScreen() {
       return;
     }
 
-    const timer = setTimeout(() => setStep('login'), 1700);
+    const timer = setTimeout(() => setStep('onboarding'), 1700);
 
     return () => clearTimeout(timer);
   }, [step]);
@@ -153,27 +175,44 @@ export default function HomeScreen() {
     calculationTimerRef.current = setTimeout(() => setStep('main'), remainingLoadingMs);
   };
 
-  const handleCalculatingBack = () => {
-    if (calculationTimerRef.current) {
-      clearTimeout(calculationTimerRef.current);
-      calculationTimerRef.current = null;
-    }
-    setStep('birthday');
-  };
-
   return (
-    <SpaceFrame plain={step === 'splash'} shader={shaderBackgroundSteps.includes(step)}>
+    <SpaceFrame plain={step === 'splash' || step === 'onboarding' || step === 'terms' || step === 'login' || step === 'health' || step === 'birthday' || step === 'calculating'} shader={shaderBackgroundSteps.includes(step)}>
       {step === 'splash' && <SplashScreen />}
-      {step === 'login' && (
-        <LoginScreen
-          onAuthenticated={(session) => {
-            setAuthSession(session);
-            setStep('privacy');
+      {step === 'onboarding' && (
+        <OnboardingScreen
+          onLogin={() => {
+            setAuthEntryMode('login');
+            setStep('login');
+          }}
+          onStart={() => {
+            setAuthEntryMode('signup');
+            setStep('terms');
           }}
         />
       )}
-      {step === 'privacy' && (
-        <PrivacyScreen
+      {step === 'terms' && (
+        <TermsScreen
+          onLater={() => {
+            setAuthEntryMode('signup');
+            setStep('login');
+          }}
+          onNext={() => {
+            setAuthEntryMode('signup');
+            setStep('login');
+          }}
+        />
+      )}
+      {step === 'login' && (
+        <LoginScreen
+          initialMode={authEntryMode}
+          onAuthenticated={(session) => {
+            setAuthSession(session);
+            setStep('health');
+          }}
+        />
+      )}
+      {step === 'health' && (
+        <HealthConnectScreen
           healthStatus={healthStatus}
           healthSummary={healthSummary}
           onBack={() => setStep('login')}
@@ -186,7 +225,7 @@ export default function HomeScreen() {
           canContinue={canContinueBirthday}
           day={day}
           month={month}
-          onBack={() => setStep('privacy')}
+          onBack={() => setStep('health')}
           onChangeDay={setDay}
           onChangeMonth={setMonth}
           onChangeYear={setYear}
@@ -194,7 +233,7 @@ export default function HomeScreen() {
           year={year}
         />
       )}
-      {step === 'calculating' && <CalculatingScreen onBack={handleCalculatingBack} />}
+      {step === 'calculating' && <CalculatingScreen />}
       {step === 'main' && (
         <MainScreen
           authSession={authSession}
@@ -242,7 +281,7 @@ function SpaceFrame({
           <View style={styles.planetBack} />
         </>
       )}
-      <SafeAreaView style={styles.safe}>{children}</SafeAreaView>
+      <SafeAreaView style={[styles.safe, plain && styles.plainSafe]}>{children}</SafeAreaView>
     </View>
   );
 }
@@ -400,7 +439,228 @@ function SplashScreen() {
   );
 }
 
-function LoginScreen({ onAuthenticated }: { onAuthenticated: (session: AuthSession) => void }) {
+function OnboardingScreen({ onLogin, onStart }: { onLogin: () => void; onStart: () => void }) {
+  const { height, width } = useWindowDimensions();
+  const carouselRef = useRef<ScrollView>(null);
+  const scrollX = useRef(new Animated.Value(0)).current;
+  const visiblePageRef = useRef(0);
+  const [activePage, setActivePage] = useState(0);
+  const isCompact = height < 760;
+  const logoScale = Math.min(1, Math.max(0.84, width / 390));
+  const loopedPages = [...onboardingPages, onboardingPages[0]];
+
+  useEffect(() => {
+    if (!width) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      const nextPage = visiblePageRef.current + 1;
+      visiblePageRef.current = nextPage;
+      setActivePage(nextPage % onboardingPages.length);
+      carouselRef.current?.scrollTo({ animated: true, x: nextPage * width });
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [width]);
+
+  const handleCarouselSettled = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const page = Math.round(event.nativeEvent.contentOffset.x / width);
+
+    if (page === onboardingPages.length) {
+      visiblePageRef.current = 0;
+      setActivePage(0);
+      requestAnimationFrame(() => {
+        carouselRef.current?.scrollTo({ animated: false, x: 0 });
+      });
+      return;
+    }
+
+    visiblePageRef.current = page;
+    setActivePage(page);
+  };
+
+  return (
+    <View style={styles.onboardingScreen}>
+      <View pointerEvents="none" style={styles.onboardingBackdrop} />
+
+      <View style={[styles.onboardingLogoArea, isCompact && styles.onboardingLogoAreaCompact]}>
+        <View style={{ transform: [{ scale: logoScale }] }}>
+          <Image
+            resizeMode="contain"
+            source={require('../../assets/images/astro-step-logo.png')}
+            style={styles.onboardingLogoImage}
+          />
+        </View>
+      </View>
+
+      <View style={[styles.onboardingCopyArea, isCompact && styles.onboardingCopyAreaCompact]}>
+        <Animated.ScrollView
+          ref={carouselRef}
+          horizontal
+          onMomentumScrollEnd={handleCarouselSettled}
+          onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: true })}
+          pagingEnabled
+          scrollEventThrottle={16}
+          showsHorizontalScrollIndicator={false}
+          style={styles.onboardingCarousel}
+        >
+          {loopedPages.map((page, index) => {
+            const inputRange = [(index - 1) * width, index * width, (index + 1) * width];
+            const opacity = scrollX.interpolate({
+              inputRange,
+              outputRange: [0.34, 1, 0.34],
+              extrapolate: 'clamp',
+            });
+            const translateX = scrollX.interpolate({
+              inputRange,
+              outputRange: [28, 0, -28],
+              extrapolate: 'clamp',
+            });
+
+            return (
+              <Animated.View
+                key={`${page.title}-${index}`}
+                style={[
+                  styles.onboardingSlide,
+                  {
+                    opacity,
+                    transform: [{ translateX }],
+                    width,
+                  },
+                ]}
+              >
+                <Ionicons name={page.icon} size={30} color="#FFFFFF" style={styles.onboardingSlideIcon} />
+                <Text style={styles.onboardingTitle}>{page.title}</Text>
+                <Text style={styles.onboardingSubtitle}>{page.subtitle}</Text>
+              </Animated.View>
+            );
+          })}
+        </Animated.ScrollView>
+        <View style={styles.onboardingDots}>
+          {[0, 1, 2].map((index) => (
+            <View key={index} style={[styles.onboardingDot, index === activePage && styles.onboardingDotActive]} />
+          ))}
+        </View>
+      </View>
+
+      <View style={[styles.onboardingActionArea, isCompact && styles.onboardingActionAreaCompact]}>
+        <Pressable onPress={onStart} style={({ pressed }) => [styles.onboardingButton, pressed && styles.pressed]}>
+          <Text style={styles.onboardingButtonText}>시작하기</Text>
+        </Pressable>
+        <Pressable onPress={onLogin} hitSlop={12} style={({ pressed }) => pressed && styles.pressed}>
+          <Text style={styles.onboardingLoginLink}>이미 계정이 있어요</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function TermsScreen({ onLater, onNext }: { onLater: () => void; onNext: () => void }) {
+  const { height } = useWindowDimensions();
+  const [privacyAgreed, setPrivacyAgreed] = useState(false);
+  const [termsAgreed, setTermsAgreed] = useState(false);
+  const canContinue = privacyAgreed && termsAgreed;
+  const isCompact = height < 760;
+
+  return (
+    <View style={[styles.termsContent, isCompact && styles.termsContentCompact]}>
+      <View style={styles.termsLogoWrap}>
+        <Image
+          resizeMode="contain"
+          source={require('../../assets/images/astro-step-logo.png')}
+          style={styles.termsLogoImage}
+        />
+      </View>
+
+      <View style={[styles.termsHeader, isCompact && styles.termsHeaderCompact]}>
+        <Text style={styles.termsTitle}>개인정보 및 약관 동의</Text>
+        <Text style={styles.termsSubtitle}>서비스 이용을 위해 아래 항목에 동의해주세요</Text>
+      </View>
+
+      <View style={[styles.termsList, isCompact && styles.termsListCompact]}>
+        <AgreementRow
+          checked={privacyAgreed}
+          description="계정 생성, 기록 저장, 서비스 제공을 위해 필요해요"
+          linkLabel="개인정보처리방침 전체보기"
+          onLinkPress={() => WebBrowser.openBrowserAsync(PRIVACY_POLICY_URL)}
+          onToggle={() => setPrivacyAgreed((current) => !current)}
+          title="개인정보 수집 및 이용에 동의합니다"
+        />
+        <View style={styles.termsDivider} />
+        <AgreementRow
+          checked={termsAgreed}
+          description="앱 이용을 위한 기본 약관입니다"
+          linkLabel="서비스 이용약관 전체보기"
+          onLinkPress={() => WebBrowser.openBrowserAsync(TERMS_OF_SERVICE_URL)}
+          onToggle={() => setTermsAgreed((current) => !current)}
+          title="서비스 이용약관에 동의합니다"
+        />
+      </View>
+
+      <View style={[styles.termsActionArea, isCompact && styles.termsActionAreaCompact]}>
+        <Pressable
+          disabled={!canContinue}
+          onPress={onNext}
+          style={({ pressed }) => [
+            styles.termsPrimaryButton,
+            !canContinue && styles.termsPrimaryButtonDisabled,
+            pressed && canContinue && styles.pressed,
+          ]}>
+          <Text style={styles.termsPrimaryButtonText}>동의하고 계속</Text>
+        </Pressable>
+        <Pressable onPress={onLater} hitSlop={12} style={({ pressed }) => pressed && styles.pressed}>
+          <Text style={styles.termsLaterLink}>나중에 할게요</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function AgreementRow({
+  checked,
+  description,
+  linkLabel,
+  onLinkPress,
+  onToggle,
+  title,
+}: {
+  checked: boolean;
+  description: string;
+  linkLabel: string;
+  onLinkPress: () => void;
+  onToggle: () => void;
+  title: string;
+}) {
+  return (
+    <View style={styles.agreementRow}>
+      <Pressable
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked }}
+        onPress={onToggle}
+        style={({ pressed }) => [styles.agreementCheckbox, checked && styles.agreementCheckboxChecked, pressed && styles.pressed]}>
+        {checked ? <Ionicons name="checkmark" size={22} color="#050607" /> : null}
+      </Pressable>
+      <View style={styles.agreementTextGroup}>
+        <Pressable onPress={onToggle} style={({ pressed }) => pressed && styles.pressed}>
+          <Text style={styles.agreementTitle}>{title}</Text>
+        </Pressable>
+        <Text style={styles.agreementDescription}>{description}</Text>
+        <Pressable onPress={onLinkPress} hitSlop={8} style={({ pressed }) => pressed && styles.pressed}>
+          <Text style={styles.agreementLink}>{linkLabel}</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function LoginScreen({
+  initialMode,
+  onAuthenticated,
+}: {
+  initialMode: 'login' | 'signup';
+  onAuthenticated: (session: AuthSession) => void;
+}) {
   const googleClientIds = getGoogleClientIds();
   const googleOAuthConfigured = Object.values(googleClientIds).some(Boolean);
   const [, googleResponse, promptGoogleAsync] = Google.useIdTokenAuthRequest({
@@ -410,10 +670,12 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: (session: AuthSessi
     selectAccount: true,
     webClientId: googleClientIds.webClientId || undefined,
   });
-  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [rememberLogin, setRememberLogin] = useState(false);
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [authStatus, setAuthStatus] = useState<'idle' | 'loading'>('idle');
   const [authMessage, setAuthMessage] = useState('');
   const isSignup = authMode === 'signup';
@@ -490,92 +752,135 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: (session: AuthSessi
   };
 
   return (
-    <CenteredPanel panelStyle={styles.loginGlassPanel}>
-      <View style={styles.loginHeader}>
-        <View style={styles.loginTitleGroup}>
-          <View style={styles.loginLogoWrap}>
-            <Logo large />
-          </View>
-          <Text style={styles.loginTitle}>{isSignup ? '회원가입' : '계정 로그인'}</Text>
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.loginScreen}>
+      <ScrollView contentContainerStyle={styles.loginContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <Image
+          resizeMode="contain"
+          source={require('../../assets/images/astro-step-logo.png')}
+          style={styles.loginBrandImage}
+        />
+
+        <View style={styles.loginHeader}>
+          <Text style={styles.loginTitle}>{isSignup ? '회원가입' : '로그인'}</Text>
           <Text style={styles.loginDescription}>
-            {isSignup ? '새 계정을 만들어 우주여행을 시작하세요.' : '계정으로 로그인하여\n우주여행을 시작하세요.'}
+            {isSignup ? '당신의 여정을 시작하세요' : '당신의 여정을 이어가세요'}
           </Text>
         </View>
-      </View>
 
-      <View style={styles.loginForm}>
-        <View style={styles.loginField}>
-          <View style={styles.passwordHeader}>
-            <Text style={styles.fieldLabel}>이메일</Text>
-            <Pressable disabled={isLoading} onPress={() => setAuthMode(isSignup ? 'login' : 'signup')}>
-              <Text style={styles.signupLinkText}>{isSignup ? '로그인' : '회원가입'}</Text>
-            </Pressable>
-          </View>
-          <TextInput
-            autoCapitalize="none"
-            editable={!isLoading}
-            keyboardType="email-address"
-            onChangeText={setEmail}
-            placeholder="m@example.com"
-            placeholderTextColor="rgba(255,255,255,0.36)"
-            style={styles.textInputGlass}
-            value={email}
-          />
-        </View>
-
-        <View style={styles.loginField}>
-          <View style={styles.passwordHeader}>
-            <Text style={styles.fieldLabel}>비밀번호</Text>
-            <Pressable>
-              <Text style={styles.forgotPasswordText}>비밀번호 찾기</Text>
-            </Pressable>
-          </View>
-          <TextInput
-            editable={!isLoading}
-            onChangeText={setPassword}
-            placeholder="8자 이상"
-            placeholderTextColor="rgba(255,255,255,0.36)"
-            secureTextEntry
-            style={styles.textInputGlass}
-            value={password}
-          />
-        </View>
-        {isSignup && (
+        <View style={styles.loginForm}>
           <View style={styles.loginField}>
-            <Text style={styles.fieldLabel}>비밀번호 확인</Text>
-            <TextInput
-              editable={!isLoading}
-              onChangeText={setConfirmPassword}
-              placeholder="비밀번호를 다시 입력"
-              placeholderTextColor="rgba(255,255,255,0.36)"
-              secureTextEntry
-              style={styles.textInputGlass}
-              value={confirmPassword}
-            />
+            <Text style={styles.fieldLabel}>이메일</Text>
+            <View style={styles.loginInputWrap}>
+              <Ionicons name="at-outline" size={30} color="rgba(255,255,255,0.72)" />
+              <TextInput
+                autoCapitalize="none"
+                editable={!isLoading}
+                keyboardType="email-address"
+                onChangeText={setEmail}
+                placeholder="이메일을 입력하세요"
+                placeholderTextColor="rgba(255,255,255,0.48)"
+                style={styles.loginTextInput}
+                value={email}
+              />
+            </View>
+          </View>
+
+          <View style={styles.loginField}>
+            <Text style={styles.fieldLabel}>비밀번호</Text>
+            <View style={styles.loginInputWrap}>
+              <Ionicons name="lock-closed-outline" size={28} color="rgba(255,255,255,0.72)" />
+              <TextInput
+                editable={!isLoading}
+                onChangeText={setPassword}
+                placeholder="비밀번호를 입력하세요"
+                placeholderTextColor="rgba(255,255,255,0.48)"
+                secureTextEntry={!passwordVisible}
+                style={styles.loginTextInput}
+                value={password}
+              />
+              <Pressable
+                accessibilityLabel={passwordVisible ? '비밀번호 숨기기' : '비밀번호 보기'}
+                hitSlop={10}
+                onPress={() => setPasswordVisible((current) => !current)}
+                style={({ pressed }) => pressed && styles.pressed}>
+                <Ionicons name={passwordVisible ? 'eye-off-outline' : 'eye-outline'} size={28} color="rgba(255,255,255,0.78)" />
+              </Pressable>
+            </View>
+          </View>
+
+          {isSignup && (
+            <View style={styles.loginField}>
+              <Text style={styles.fieldLabel}>비밀번호 확인</Text>
+              <View style={styles.loginInputWrap}>
+                <Ionicons name="lock-closed-outline" size={28} color="rgba(255,255,255,0.72)" />
+                <TextInput
+                  editable={!isLoading}
+                  onChangeText={setConfirmPassword}
+                  placeholder="비밀번호를 다시 입력하세요"
+                  placeholderTextColor="rgba(255,255,255,0.48)"
+                  secureTextEntry={!passwordVisible}
+                  style={styles.loginTextInput}
+                  value={confirmPassword}
+                />
+              </View>
+            </View>
+          )}
+        </View>
+
+        {!isSignup && (
+          <View style={styles.loginOptionsRow}>
+            <Pressable
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: rememberLogin }}
+              onPress={() => setRememberLogin((current) => !current)}
+              style={({ pressed }) => [styles.loginCheckboxRow, pressed && styles.pressed]}>
+              <View style={[styles.loginCheckbox, rememberLogin && styles.loginCheckboxChecked]}>
+                {rememberLogin ? <Ionicons name="checkmark" size={18} color="#050607" /> : null}
+              </View>
+              <Text style={styles.loginOptionText}>로그인 상태 유지</Text>
+            </Pressable>
+            <Pressable hitSlop={10} onPress={() => setAuthMessage('비밀번호 재설정은 아직 준비 중입니다.')} style={({ pressed }) => pressed && styles.pressed}>
+              <Text style={styles.forgotPasswordText}>비밀번호를 잊으셨나요?</Text>
+            </Pressable>
           </View>
         )}
-      </View>
 
-      {authMessage ? <Text style={styles.authMessage}>{authMessage}</Text> : null}
+        {authMessage ? <Text style={styles.authMessage}>{authMessage}</Text> : null}
 
-      <Pressable
-        disabled={isLoading}
-        onPress={handleEmailAuth}
-        style={({ pressed }) => [styles.loginButton, isLoading && styles.disabledButton, pressed && !isLoading && styles.pressed]}>
-        {isLoading ? (
-          <ActivityIndicator color="#09090B" />
-        ) : (
-          <Text style={styles.loginButtonText}>{isSignup ? '회원가입' : '로그인'}</Text>
-        )}
-      </Pressable>
+        <Pressable
+          disabled={isLoading}
+          onPress={handleEmailAuth}
+          style={({ pressed }) => [styles.loginButton, isLoading && styles.disabledButton, pressed && !isLoading && styles.pressed]}>
+          {isLoading ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <Text style={styles.loginButtonText}>{isSignup ? '회원가입' : '로그인'}</Text>
+          )}
+        </Pressable>
 
-      <AuthButton icon="logo-google" label="Google 계정으로 로그인" onPress={handleGoogleAuth} />
-      <AuthButton icon="logo-apple" label="Apple 계정으로 로그인" onPress={() => setAuthMessage('Apple 로그인은 아직 준비 중입니다.')} />
-    </CenteredPanel>
+        <View style={styles.loginSwitchRow}>
+          <Text style={styles.signupText}>{isSignup ? '이미 계정이 있으신가요?' : '계정이 없으신가요?'}</Text>
+          <Pressable disabled={isLoading} hitSlop={10} onPress={() => setAuthMode(isSignup ? 'login' : 'signup')} style={({ pressed }) => pressed && styles.pressed}>
+            <Text style={styles.signupLinkText}>{isSignup ? '로그인' : '회원가입'}</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.dividerRow}>
+          <View style={styles.divider} />
+          <Text style={styles.dividerText}>또는</Text>
+          <View style={styles.divider} />
+        </View>
+
+        <View style={styles.socialAuthRow}>
+          <AuthButton icon="logo-google" label="Google" onPress={handleGoogleAuth} />
+          <AuthButton icon="logo-apple" label="Apple" onPress={() => setAuthMessage('Apple 로그인은 아직 준비 중입니다.')} />
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
-function PrivacyScreen({
+function HealthConnectScreen({
   healthStatus,
   healthSummary,
   onBack,
@@ -588,76 +893,164 @@ function PrivacyScreen({
   onConnect: () => void;
   onSkip: () => void;
 }) {
+  const { height, width } = useWindowDimensions();
+  const swipeTranslateX = useRef(new Animated.Value(0)).current;
   const isLoading = healthStatus === 'loading';
   const isConnected = healthStatus === 'connected';
+  const hasMessage = healthSummary && healthSummary.status !== 'idle';
+  const isCompact = height < 760;
+  const isTiny = height < 700;
+  const iosBackPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gesture) =>
+          Platform.OS === 'ios' &&
+          gesture.moveX - gesture.dx <= 28 &&
+          gesture.dx > 10 &&
+          Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.4,
+        onPanResponderMove: (_, gesture) => {
+          swipeTranslateX.setValue(Math.max(0, gesture.dx));
+        },
+        onPanResponderRelease: (_, gesture) => {
+          if (gesture.dx > width * 0.24 || gesture.vx > 0.55) {
+            Animated.timing(swipeTranslateX, {
+              duration: 180,
+              easing: Easing.out(Easing.cubic),
+              toValue: width,
+              useNativeDriver: true,
+            }).start(({ finished }) => {
+              if (finished) {
+                swipeTranslateX.setValue(0);
+                onBack();
+              }
+            });
+            return;
+          }
+
+          Animated.spring(swipeTranslateX, {
+            damping: 22,
+            stiffness: 220,
+            toValue: 0,
+            useNativeDriver: true,
+          }).start();
+        },
+        onPanResponderTerminate: () => {
+          Animated.spring(swipeTranslateX, {
+            damping: 22,
+            stiffness: 220,
+            toValue: 0,
+            useNativeDriver: true,
+          }).start();
+        },
+      }),
+    [onBack, swipeTranslateX, width]
+  );
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') {
+      return;
+    }
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      onBack();
+      return true;
+    });
+
+    return () => subscription.remove();
+  }, [onBack]);
 
   return (
-    <CenteredPanel>
-      <PanelBackHeader label="로그인 화면으로 돌아가기" onBack={onBack} />
-      <View style={styles.healthIconWrap}>
-        <View style={styles.healthIcon}>
-          <Ionicons name="heart" size={34} color="#ff3b65" />
-        </View>
-      </View>
-      <Text style={styles.panelTitle}>개인정보 동의</Text>
-      <Text style={styles.panelCopy}>
-        Astro Step은 이메일, 생년월일, 걸음 수를 우주 여행 거리 계산에만 사용합니다.
-      </Text>
-      <View style={styles.policySummaryCard}>
-        <PolicyItem number="1" title="수집 항목">
-          이메일, 생년월일, 걸음 수 및 거리 데이터
-        </PolicyItem>
-        <PolicyItem number="2" title="이용 목적">
-          누적 걸음 수를 우주 거리로 환산하고 개인 여정을 계산합니다.
-        </PolicyItem>
-        <PolicyItem number="3" title="보호 원칙">
-          동의 없이 제3자에게 개인정보를 제공하지 않습니다.
-        </PolicyItem>
-        <Pressable
-          onPress={() => WebBrowser.openBrowserAsync(PRIVACY_POLICY_URL)}
-          style={({ pressed }) => [styles.policyLinkButton, pressed && styles.pressed]}>
-          <Text style={styles.policyLinkText}>개인정보처리방침 전문 보기</Text>
-          <Ionicons name="open-outline" size={18} color="#DCD9FF" />
-        </Pressable>
-      </View>
-      <View style={styles.permissionCard}>
-        <Text style={styles.permissionTitle}>건강 앱 연동 데이터</Text>
-        <PermissionRow icon="footsteps-outline" title="걸음 수" copy="일일 걸음 수 및 전체 걸음 수" />
-        <PermissionRow icon="bar-chart-outline" title="거리 데이터" copy="걷기 거리 계산에 필요한 데이터" />
-      </View>
-      <View style={styles.safeDataCard}>
-        <Ionicons
-          name={isConnected ? 'checkmark-circle-outline' : 'shield-checkmark-outline'}
-          size={30}
-          color="#A9A7FF"
+    <SafeAreaView style={styles.healthConnectScreen}>
+      <Animated.View
+        style={[
+          styles.healthConnectSwipeSurface,
+          Platform.OS === 'ios' && {
+            transform: [{ translateX: swipeTranslateX }],
+          },
+        ]}
+        {...(Platform.OS === 'ios' ? iosBackPanResponder.panHandlers : {})}>
+        <View style={[styles.healthConnectContent, isCompact && styles.healthConnectContentCompact, isTiny && styles.healthConnectContentTiny]}>
+        <Image
+          resizeMode="contain"
+          source={require('../../assets/images/astro-step-logo.png')}
+          style={[styles.healthConnectLogo, isCompact && styles.healthConnectLogoCompact, isTiny && styles.healthConnectLogoTiny]}
         />
-        <View style={styles.safeDataText}>
-          <Text style={styles.safeDataTitle}>{isConnected ? '건강 앱 연결 완료' : '데이터는 안전하게 보호돼요'}</Text>
-          <Text style={styles.safeDataCopy}>
-            {healthSummary?.message ?? 'iOS 건강 앱과 Android 건강 앱에서 걸음 수만 읽어옵니다.'}
+
+        <View style={[styles.appleHealthIcon, isCompact && styles.appleHealthIconCompact, isTiny && styles.appleHealthIconTiny]}>
+          <Ionicons name="heart" size={isTiny ? 42 : isCompact ? 50 : 58} color="#FF1F32" />
+        </View>
+
+        <View style={[styles.healthConnectHeader, isCompact && styles.healthConnectHeaderCompact, isTiny && styles.healthConnectHeaderTiny]}>
+          <Text style={[styles.healthConnectTitle, isCompact && styles.healthConnectTitleCompact, isTiny && styles.healthConnectTitleTiny]}>
+            Apple Health에 연결하기
+          </Text>
+          <Text style={[styles.healthConnectSubtitle, isCompact && styles.healthConnectSubtitleCompact, isTiny && styles.healthConnectSubtitleTiny]}>
+            걸음 수 기록을 불러와 더 정확한 여정을 시작하세요
           </Text>
         </View>
-        <Ionicons name="lock-closed-outline" size={20} color="rgba(255,255,255,0.55)" />
-      </View>
-      {isConnected && healthSummary ? (
-        <View style={styles.healthResultCard}>
-          <Text style={styles.healthResultLabel}>가져온 걸음 수</Text>
-          <Text style={styles.healthResultValue}>{formatNumber(healthSummary.totalSteps)} 걸음</Text>
-          <Text style={styles.healthResultCopy}>
-            오늘 {formatNumber(healthSummary.todaySteps)} 걸음 · 일 평균{' '}
-            {formatNumber(healthSummary.dailyAverageSteps)} 걸음
-          </Text>
+
+        <View style={[styles.healthBenefitList, isCompact && styles.healthBenefitListCompact, isTiny && styles.healthBenefitListTiny]}>
+          <HealthBenefit compact={isCompact} tiny={isTiny} icon="footsteps" text="과거 걸음 수를 빠르게 가져와요" />
+          <HealthBenefit compact={isCompact} tiny={isTiny} icon="stats-chart" text="실제 기록과 추정 기록을 구분해 보여줘요" />
+          <HealthBenefit compact={isCompact} tiny={isTiny} icon="earth" text="당신의 지구 여정을 더 정확하게 계산해요" />
         </View>
-      ) : null}
-      <PrimaryButton
-        disabled={isLoading}
-        label={isLoading ? '연결 중' : isConnected ? '다음' : '동의하고 건강 앱 연결하기'}
-        onPress={isConnected ? onSkip : onConnect}
-      />
-      <Pressable onPress={onSkip} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
-        <Text style={styles.secondaryButtonText}>건강 앱 없이 계속하기</Text>
-      </Pressable>
-    </CenteredPanel>
+
+        {hasMessage ? (
+          <View style={[styles.healthConnectStatus, isCompact && styles.healthConnectStatusCompact]}>
+            <Ionicons
+              name={isConnected ? 'checkmark-circle' : 'information-circle'}
+              size={22}
+              color={isConnected ? '#BFD0EF' : '#A8B6D4'}
+            />
+            <Text style={styles.healthConnectStatusText}>
+              {isConnected && healthSummary
+                ? `${formatNumber(healthSummary.totalSteps)} 걸음을 가져왔어요`
+                : healthSummary.message}
+            </Text>
+          </View>
+        ) : null}
+
+        <View style={[styles.healthConnectActions, isCompact && styles.healthConnectActionsCompact, isTiny && styles.healthConnectActionsTiny]}>
+          <Pressable
+            disabled={isLoading}
+            onPress={isConnected ? onSkip : onConnect}
+            style={({ pressed }) => [
+              styles.healthConnectButton,
+              isLoading && styles.disabledButton,
+              pressed && !isLoading && styles.pressed,
+            ]}>
+            {isLoading ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.healthConnectButtonText}>{isConnected ? '다음' : 'Apple 건강 활성화'}</Text>
+            )}
+          </Pressable>
+          <Pressable onPress={onSkip} style={({ pressed }) => [styles.healthConnectLater, pressed && styles.pressed]}>
+            <Text style={styles.healthConnectLaterText}>아마 나중에요</Text>
+          </Pressable>
+        </View>
+        </View>
+      </Animated.View>
+    </SafeAreaView>
+  );
+}
+
+function HealthBenefit({
+  compact = false,
+  icon,
+  text,
+  tiny = false,
+}: {
+  compact?: boolean;
+  icon: keyof typeof Ionicons.glyphMap;
+  text: string;
+  tiny?: boolean;
+}) {
+  return (
+    <View style={[styles.healthBenefitRow, tiny && styles.healthBenefitRowTiny]}>
+      <Ionicons name={icon} size={tiny ? 22 : compact ? 26 : 30} color="#AAB6CF" style={styles.healthBenefitIcon} />
+      <Text style={[styles.healthBenefitText, compact && styles.healthBenefitTextCompact, tiny && styles.healthBenefitTextTiny]}>{text}</Text>
+    </View>
   );
 }
 
@@ -682,77 +1075,193 @@ function BirthdayScreen({
   onNext: () => void;
   year: string;
 }) {
+  const { height, width } = useWindowDimensions();
+  const swipeTranslateX = useRef(new Animated.Value(0)).current;
+  const isCompact = height < 760;
+  const birthDateValue = formatBirthDateInput(`${year}${month}${day}`);
+  const iosBackPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gesture) =>
+          Platform.OS === 'ios' &&
+          gesture.moveX - gesture.dx <= 28 &&
+          gesture.dx > 10 &&
+          Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.4,
+        onPanResponderMove: (_, gesture) => {
+          swipeTranslateX.setValue(Math.max(0, gesture.dx));
+        },
+        onPanResponderRelease: (_, gesture) => {
+          if (gesture.dx > width * 0.24 || gesture.vx > 0.55) {
+            Animated.timing(swipeTranslateX, {
+              duration: 180,
+              easing: Easing.out(Easing.cubic),
+              toValue: width,
+              useNativeDriver: true,
+            }).start(({ finished }) => {
+              if (finished) {
+                swipeTranslateX.setValue(0);
+                onBack();
+              }
+            });
+            return;
+          }
+
+          Animated.spring(swipeTranslateX, {
+            damping: 22,
+            stiffness: 220,
+            toValue: 0,
+            useNativeDriver: true,
+          }).start();
+        },
+        onPanResponderTerminate: () => {
+          Animated.spring(swipeTranslateX, {
+            damping: 22,
+            stiffness: 220,
+            toValue: 0,
+            useNativeDriver: true,
+          }).start();
+        },
+      }),
+    [onBack, swipeTranslateX, width]
+  );
+
+  const handleBirthDateChange = (nextValue: string) => {
+    const digits = nextValue.replace(/\D/g, '').slice(0, 8);
+
+    onChangeYear(digits.slice(0, 4));
+    onChangeMonth(digits.slice(4, 6));
+    onChangeDay(digits.slice(6, 8));
+  };
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') {
+      return;
+    }
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      onBack();
+      return true;
+    });
+
+    return () => subscription.remove();
+  }, [onBack]);
+
   return (
-    <KeyboardAvoidingView behavior={Platform.select({ ios: 'padding', android: undefined })} style={styles.flex}>
-      <Pressable
-        accessibilityLabel="건강 앱 연동 화면으로 돌아가기"
-        onPress={onBack}
-        style={({ pressed }) => [styles.floatingBackButton, pressed && styles.pressed]}>
-        <Ionicons name="chevron-back" size={26} color="#FFFFFF" />
-      </Pressable>
-      <ScrollView contentContainerStyle={styles.birthdayContent} keyboardShouldPersistTaps="handled">
-        <Text style={styles.topStar}>✦</Text>
-        <Text style={styles.birthdayTitle}>지구에서{'\n'}여행을 시작한 지{'\n'}얼마나 되었나요?</Text>
-        <Text style={styles.birthdayCopy}>정확한 여정 계산을 위해{'\n'}생년월일을 입력해주세요.</Text>
-        <View style={styles.earthGlow} />
-        <View style={styles.birthdayPanel}>
-          <Ionicons name="calendar-outline" size={42} color="#D8D4FF" />
-          <Text style={styles.birthdayPanelTitle}>생년월일 입력</Text>
-          <View style={styles.birthInputRow}>
-            <DateInput label="년" maxLength={4} onChange={onChangeYear} placeholder="YYYY" value={year} />
-            <Text style={styles.dateDot}>:</Text>
-            <DateInput label="월" maxLength={2} onChange={onChangeMonth} placeholder="MM" value={month} />
-            <Text style={styles.dateDot}>:</Text>
-            <DateInput label="일" maxLength={2} onChange={onChangeDay} placeholder="DD" value={day} />
+    <KeyboardAvoidingView behavior={Platform.select({ ios: 'padding', android: undefined })} style={styles.birthdayScreen}>
+      <TouchableWithoutFeedback accessible={false} onPress={Keyboard.dismiss}>
+        <Animated.View
+          style={[
+            styles.birthdaySwipeSurface,
+            Platform.OS === 'ios' && { transform: [{ translateX: swipeTranslateX }] },
+          ]}
+          {...(Platform.OS === 'ios' ? iosBackPanResponder.panHandlers : {})}>
+          <View style={[styles.birthdayContent, isCompact && styles.birthdayContentCompact]}>
+            <Image
+              resizeMode="contain"
+              source={require('../../assets/images/astro-step-logo.png')}
+              style={[styles.birthdayLogo, isCompact && styles.birthdayLogoCompact]}
+            />
+
+            <View style={[styles.birthdayHeader, isCompact && styles.birthdayHeaderCompact]}>
+              <Ionicons name="calendar-clear-outline" size={34} color="#FFFFFF" style={styles.birthdayHeaderIcon} />
+              <Text style={[styles.birthdayTitle, isCompact && styles.birthdayTitleCompact]}>
+                지구에서 여행을 시작한 지{'\n'}얼마나 되었나요?
+              </Text>
+              <Text style={styles.birthdayCopy}>기록되지 않은 과거 걸음을 추정하기 위해 필요해요</Text>
+            </View>
+
+            <View style={[styles.birthdayForm, isCompact && styles.birthdayFormCompact]}>
+              <Text style={styles.birthdayLabel}>생년월일</Text>
+              <View style={styles.birthdayInputWrap}>
+                <TextInput
+                  keyboardType="number-pad"
+                  maxLength={10}
+                  onChangeText={handleBirthDateChange}
+                  placeholder="1998.06.21"
+                  placeholderTextColor="rgba(255,255,255,0.42)"
+                  style={styles.birthdayInput}
+                  value={birthDateValue}
+                />
+                <Ionicons name="calendar-outline" size={25} color="rgba(255,255,255,0.64)" />
+              </View>
+              <Text style={styles.birthdayHint}>입력한 생년월일은 추정 기록 계산에만 사용돼요</Text>
+              <Pressable hitSlop={10} style={({ pressed }) => pressed && styles.pressed}>
+                <Text style={styles.birthdayHelpLink}>왜 필요한가요?</Text>
+              </Pressable>
+            </View>
+
+            <Pressable
+              disabled={!canContinue}
+              onPress={onNext}
+              style={({ pressed }) => [
+                styles.birthdayNextButton,
+                !canContinue && styles.disabledButton,
+                pressed && canContinue && styles.pressed,
+              ]}>
+              <Text style={styles.birthdayNextButtonText}>다음</Text>
+            </Pressable>
           </View>
-          <PrimaryButton disabled={!canContinue} label="다음" onPress={onNext} />
-        </View>
-      </ScrollView>
+        </Animated.View>
+      </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
   );
 }
 
-function CalculatingScreen({ onBack }: { onBack: () => void }) {
+function CalculatingScreen() {
   return (
-    <ScrollView contentContainerStyle={styles.calculatingContent} showsVerticalScrollIndicator={false}>
-      <GlassPanel style={styles.calculatingPanel}>
-        <PanelBackHeader label="생년월일 입력 화면으로 돌아가기" onBack={onBack} />
-        <Text style={styles.topStar}>✦</Text>
-        <Text style={styles.calculatingTitle}>우주 여행 경로를 계산 중입니다</Text>
-        <Text style={styles.calculatingCopy}>잠시만 기다려주세요. 정확한 계산을 위해 데이터를 분석하고 있습니다.</Text>
-        <View style={styles.timeline}>
-          {calculationSteps.map(([icon, title, copy], index) => (
-            <View key={title} style={styles.timelineItem}>
-              <View style={[styles.timelineIcon, index < 2 && styles.timelineIconDone]}>
-                <Ionicons name={icon} size={24} color={index < 3 ? '#D9D6FF' : 'rgba(255,255,255,0.38)'} />
-              </View>
-              <View style={styles.timelineText}>
-                <Text style={[styles.timelineTitle, index > 2 && styles.timelineDim]}>{index + 1}. {title}</Text>
-                <Text style={[styles.timelineCopy, index > 2 && styles.timelineDim]}>{copy}</Text>
-              </View>
-              {index < 2 ? (
-                <Ionicons name="checkmark-circle" size={24} color="#D9D6FF" />
-              ) : index === 2 ? (
-                <ActivityIndicator color="#D9D6FF" />
-              ) : (
-                <View style={styles.timelineDot} />
-              )}
-            </View>
-          ))}
+    <View style={styles.calculatingScreen}>
+      <View style={styles.calculatingContent}>
+        <Image
+          resizeMode="contain"
+          source={require('../../assets/images/astro-step-logo.png')}
+          style={styles.calculatingLogo}
+        />
+
+        <View style={styles.calculatingHeader}>
+          <Text style={styles.calculatingTitle}>우주여행 경로를{'\n'}계산중입니다</Text>
+          <Text style={styles.calculatingCopy}>잠시만 기다려주세요</Text>
         </View>
-        <View style={styles.astronautScene}>
-          <View style={styles.moonGround} />
-          <Ionicons name="walk-outline" size={62} color="#FFFFFF" />
-        </View>
-        <View style={styles.progressRow}>
-          <View style={styles.progressTrack}>
-            <View style={styles.progressFill} />
+
+        <View style={styles.calculatingOrbitScene}>
+          <View style={styles.calculatingStarOne} />
+          <View style={styles.calculatingStarTwo} />
+          <View style={styles.calculatingStarThree} />
+          <View style={styles.calculatingOrbitOuter} />
+          <View style={styles.calculatingOrbitInner} />
+          <View style={[styles.calculatingOrbitDot, styles.calculatingOrbitDotTop]} />
+          <View style={[styles.calculatingOrbitDot, styles.calculatingOrbitDotRight]} />
+          <View style={[styles.calculatingOrbitDot, styles.calculatingOrbitDotBottom]} />
+          <View style={[styles.calculatingOrbitDot, styles.calculatingOrbitDotLeft]} />
+          <View style={styles.calculatingEarth}>
+            <Ionicons name="earth-outline" size={70} color="#9BD6FF" />
           </View>
-          <Text style={styles.progressPercent}>67%</Text>
+          <View style={styles.calculatingTrail}>
+            <View style={styles.calculatingTrailDot} />
+            <View style={styles.calculatingTrailDot} />
+            <View style={styles.calculatingTrailDot} />
+            <View style={styles.calculatingTrailDot} />
+          </View>
+          <View style={styles.calculatingRocket}>
+            <Ionicons name="rocket-outline" size={78} color="#B9E3FF" />
+          </View>
         </View>
-        <Text style={styles.tip}>✦ TIP  한 걸음 한 걸음이 우주로 향하는 여정이 됩니다.</Text>
-      </GlassPanel>
-    </ScrollView>
+
+        <View style={styles.calculatingInfo}>
+          <View style={styles.calculatingFormulaRow}>
+            <Ionicons name="sparkles-outline" size={28} color="#58B9FF" />
+            <Text style={styles.calculatingFormula}>
+              우주 환산 공식: 걸음 수 × <Text style={styles.calculatingAccent}>7.5 km</Text> = 우주 환산 거리
+            </Text>
+          </View>
+          <View style={styles.calculatingQuestionRow}>
+            <Ionicons name="help-circle-outline" size={28} color="#58B9FF" />
+            <Text style={styles.calculatingQuestion}>
+              왜 7.5 km인가요? 우주왕복선이 지구에서 우주 궤도에 도달하려면 약 초속 7.5 km가 필요하기 때문에, Astro Step은 그 숫자에서 착안해 1보를 7.5 km의 우주 거리로 환산했어요.
+            </Text>
+          </View>
+        </View>
+      </View>
+    </View>
   );
 }
 
@@ -926,28 +1435,6 @@ function MainScreen({
   );
 }
 
-function CenteredPanel({ children, panelStyle }: { children: ReactNode; panelStyle?: object }) {
-  return (
-    <ScrollView contentContainerStyle={styles.centeredContent} showsVerticalScrollIndicator={false}>
-      <GlassPanel style={[styles.centeredPanel, panelStyle]}>{children}</GlassPanel>
-    </ScrollView>
-  );
-}
-
-function PanelBackHeader({ label, onBack }: { label: string; onBack: () => void }) {
-  return (
-    <View style={styles.panelBackHeader}>
-      <Pressable
-        accessibilityLabel={label}
-        onPress={onBack}
-        style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
-        <Ionicons name="chevron-back" size={26} color="#FFFFFF" />
-      </Pressable>
-      <View style={styles.headerSpacer} />
-    </View>
-  );
-}
-
 function GlassPanel({ children, style }: { children: ReactNode; style?: object | object[] }) {
   return <View style={[styles.glass, style]}>{children}</View>;
 }
@@ -957,80 +1444,7 @@ function AuthButton({ icon, label, onPress }: { icon: keyof typeof Ionicons.glyp
     <Pressable onPress={onPress} style={({ pressed }) => [styles.authButton, pressed && styles.pressed]}>
       <Ionicons name={icon} size={28} color="#FFFFFF" />
       <Text style={styles.authButtonText}>{label}</Text>
-      <Ionicons name="chevron-forward" size={24} color="#FFFFFF" />
     </Pressable>
-  );
-}
-
-function PrimaryButton({ disabled, label, onPress }: { disabled?: boolean; label: string; onPress: () => void }) {
-  return (
-    <Pressable
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => [styles.primaryButton, disabled && styles.disabledButton, pressed && !disabled && styles.pressed]}>
-      <Text style={styles.primaryButtonText}>{label}</Text>
-      <Ionicons name="chevron-forward" size={26} color="#FFFFFF" />
-    </Pressable>
-  );
-}
-
-function PolicyItem({ children, number, title }: { children: ReactNode; number: string; title: string }) {
-  return (
-    <View style={styles.policyItem}>
-      <View style={styles.policyNumber}>
-        <Text style={styles.policyNumberText}>{number}</Text>
-      </View>
-      <View style={styles.policyText}>
-        <Text style={styles.policyTitle}>{title}</Text>
-        <Text style={styles.policyBody}>{children}</Text>
-      </View>
-    </View>
-  );
-}
-
-function PermissionRow({ copy, icon, title }: { copy: string; icon: keyof typeof Ionicons.glyphMap; title: string }) {
-  return (
-    <View style={styles.permissionRow}>
-      <View style={styles.permissionIcon}>
-        <Ionicons name={icon} size={25} color="#C7C5FF" />
-      </View>
-      <View style={styles.permissionText}>
-        <Text style={styles.permissionRowTitle}>{title}</Text>
-        <Text style={styles.permissionCopy}>{copy}</Text>
-      </View>
-      <View style={styles.permissionCheck}>
-        <Ionicons name="checkmark" size={18} color="#FFFFFF" />
-      </View>
-    </View>
-  );
-}
-
-function DateInput({
-  label,
-  maxLength,
-  onChange,
-  placeholder,
-  value,
-}: {
-  label: string;
-  maxLength: number;
-  onChange: (value: string) => void;
-  placeholder: string;
-  value: string;
-}) {
-  return (
-    <View style={styles.dateInputWrap}>
-      <TextInput
-        keyboardType="number-pad"
-        maxLength={maxLength}
-        onChangeText={(next) => onChange(next.replace(/\D/g, '').slice(0, maxLength))}
-        placeholder={placeholder}
-        placeholderTextColor="rgba(255,255,255,0.36)"
-        style={styles.dateInput}
-        value={value}
-      />
-      <Text style={styles.dateLabel}>{label}</Text>
-    </View>
   );
 }
 
@@ -1038,22 +1452,54 @@ function formatNumber(value: number) {
   return new Intl.NumberFormat('ko-KR').format(Math.round(value));
 }
 
+function formatBirthDateInput(digits: string) {
+  const normalized = digits.replace(/\D/g, '').slice(0, 8);
+  const parts = [normalized.slice(0, 4), normalized.slice(4, 6), normalized.slice(6, 8)].filter(Boolean);
+
+  return parts.join('.');
+}
+
 const styles = StyleSheet.create({
+  agreementCheckbox: { alignItems: 'center', borderColor: 'rgba(255,255,255,0.7)', borderRadius: 8, borderWidth: 1.5, height: 32, justifyContent: 'center', width: 32 },
+  agreementCheckboxChecked: { backgroundColor: '#FFFFFF', borderColor: '#FFFFFF' },
+  agreementDescription: { color: 'rgba(255,255,255,0.68)', fontSize: 12, lineHeight: 18, marginTop: 8 },
+  agreementLink: { color: '#8FA8D8', fontSize: 12, lineHeight: 18, marginTop: 14 },
+  agreementRow: { alignItems: 'flex-start', flexDirection: 'row', gap: 22, width: '100%' },
+  agreementTextGroup: { flex: 1, paddingTop: 3 },
+  agreementTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', lineHeight: 23 },
   appHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16, width: '100%' },
   asteroidOne: { backgroundColor: '#9A9A9A', borderRadius: 12, height: 18, opacity: 0.75, position: 'absolute', right: 50, top: 210, width: 24 },
   asteroidTwo: { backgroundColor: '#5C5C5C', borderRadius: 999, height: 12, opacity: 0.75, position: 'absolute', right: 126, top: 250, width: 12 },
   astronautScene: { alignItems: 'center', height: 132, justifyContent: 'flex-end', marginTop: 18, overflow: 'hidden', width: '100%' },
-  authButton: { alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.12)', borderColor: 'rgba(255,255,255,0.28)', borderRadius: 18, borderWidth: 1, flexDirection: 'row', gap: 14, minHeight: 58, paddingHorizontal: 20, width: '100%' },
-  authButtonText: { color: '#FFFFFF', flex: 1, fontSize: 13, fontWeight: '700', letterSpacing: 0 },
-  authMessage: { color: '#FFD1D1', fontSize: 12, lineHeight: 18, textAlign: 'center' },
+  authButton: { alignItems: 'center', borderColor: 'rgba(255,255,255,0.28)', borderRadius: 14, borderWidth: 1.2, flex: 1, flexDirection: 'row', gap: 12, height: 52, justifyContent: 'center' },
+  authButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700', letterSpacing: 0 },
+  authMessage: { color: '#FFD1D1', fontSize: 12, lineHeight: 18, marginTop: 10, textAlign: 'center' },
   backButton: { alignItems: 'center', height: 36, justifyContent: 'center', width: 36 },
   bellWrap: { position: 'relative' },
   birthInputRow: { alignItems: 'center', flexDirection: 'row', gap: 10, marginBottom: 28, marginTop: 24 },
-  birthdayContent: { alignItems: 'center', flexGrow: 1, justifyContent: 'center', padding: 24 },
-  birthdayCopy: { color: 'rgba(255,255,255,0.76)', fontSize: 15, lineHeight: 24, marginTop: 16, textAlign: 'center' },
+  birthdayContent: { alignItems: 'center', flex: 1, paddingBottom: 30, paddingHorizontal: 36, paddingTop: 42 },
+  birthdayContentCompact: { paddingBottom: 18, paddingHorizontal: 30, paddingTop: 20 },
+  birthdayCopy: { color: 'rgba(255,255,255,0.72)', fontSize: 14, lineHeight: 21, marginTop: 22, textAlign: 'center' },
+  birthdayForm: { marginTop: 36, width: '100%' },
+  birthdayFormCompact: { marginTop: 22 },
+  birthdayHeader: { alignItems: 'center', marginTop: 74, width: '100%' },
+  birthdayHeaderCompact: { marginTop: 38 },
+  birthdayHeaderIcon: { marginBottom: 18, opacity: 0.96 },
+  birthdayHelpLink: { color: '#8DB5F5', fontSize: 16, fontWeight: '500', marginTop: 34, textAlign: 'center' },
+  birthdayHint: { color: 'rgba(255,255,255,0.48)', fontSize: 13, lineHeight: 19, marginTop: 14, paddingHorizontal: 14 },
+  birthdayInput: { color: '#FFFFFF', flex: 1, fontSize: 20, fontWeight: '400', letterSpacing: 0, padding: 0 },
+  birthdayInputWrap: { alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.34)', borderRadius: 20, borderWidth: 1.2, flexDirection: 'row', gap: 14, height: 64, marginTop: 18, paddingHorizontal: 20, width: '100%' },
+  birthdayLabel: { alignSelf: 'flex-start', color: '#FFFFFF', fontSize: 18, fontWeight: '700', lineHeight: 25 },
+  birthdayLogo: { height: 62, width: 265 },
+  birthdayLogoCompact: { height: 50, width: 220 },
+  birthdayNextButton: { alignItems: 'center', backgroundColor: '#8992A2', borderRadius: 999, height: 60, justifyContent: 'center', marginTop: 'auto', shadowColor: '#AEB7C8', shadowOffset: { height: 10, width: 0 }, shadowOpacity: 0.18, shadowRadius: 22, width: '100%' },
+  birthdayNextButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
   birthdayPanel: { alignItems: 'center', backgroundColor: 'rgba(12,12,16,0.78)', borderColor: 'rgba(255,255,255,0.33)', borderRadius: 26, borderWidth: 1, marginTop: 28, padding: 22, width: '100%' },
   birthdayPanelTitle: { color: '#FFFFFF', fontSize: 23, fontWeight: '800', marginTop: 12 },
-  birthdayTitle: { color: '#FFFFFF', fontSize: 28, fontWeight: '700', lineHeight: 39, textAlign: 'center' },
+  birthdayScreen: { backgroundColor: '#050607', flex: 1 },
+  birthdaySwipeSurface: { flex: 1 },
+  birthdayTitle: { color: '#FFFFFF', fontSize: 28, fontWeight: '800', lineHeight: 35, textAlign: 'center', textShadowColor: 'rgba(255,255,255,0.35)', textShadowRadius: 12 },
+  birthdayTitleCompact: { fontSize: 25, lineHeight: 31 },
   cardFoot: { color: '#D7D4FF', fontSize: 14, marginTop: 18 },
   cardHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', width: '100%' },
   cardRow: { flexDirection: 'row', gap: 14, marginTop: 16, width: '100%' },
@@ -1068,18 +1514,41 @@ const styles = StyleSheet.create({
   checkCircle: { alignItems: 'center', backgroundColor: '#868BFF', borderRadius: 999, height: 32, justifyContent: 'center', shadowColor: '#A7A4FF', shadowOpacity: 0.8, shadowRadius: 14, width: 32 },
   checkRow: { alignItems: 'center', flexDirection: 'row', gap: 12, width: '100%' },
   checkText: { color: 'rgba(255,255,255,0.78)', flex: 1, fontSize: 15 },
-  calculatingContent: { flexGrow: 1, justifyContent: 'center', padding: 24 },
-  calculatingCopy: { color: 'rgba(255,255,255,0.68)', fontSize: 13, lineHeight: 20, marginTop: 8, textAlign: 'center' },
-  calculatingPanel: { padding: 22 },
-  calculatingTitle: { color: '#FFFFFF', fontSize: 23, fontWeight: '800', lineHeight: 30, textAlign: 'center' },
+  calculatingAccent: { color: '#58B9FF' },
+  calculatingContent: { alignItems: 'center', flex: 1, paddingBottom: 34, paddingHorizontal: 34, paddingTop: 74 },
+  calculatingCopy: { color: 'rgba(255,255,255,0.62)', fontSize: 18, lineHeight: 26, marginTop: 28, textAlign: 'center' },
+  calculatingEarth: { alignItems: 'center', bottom: 62, height: 88, justifyContent: 'center', left: 56, position: 'absolute', shadowColor: '#58B9FF', shadowOpacity: 0.9, shadowRadius: 18, width: 88 },
+  calculatingFormula: { color: 'rgba(255,255,255,0.82)', flex: 1, fontSize: 16, lineHeight: 24 },
+  calculatingFormulaRow: { alignItems: 'center', flexDirection: 'row', gap: 18, width: '100%' },
+  calculatingHeader: { alignItems: 'center', marginTop: 130, width: '100%' },
+  calculatingInfo: { gap: 28, marginTop: 42, width: '100%' },
+  calculatingLogo: { height: 62, width: 265 },
+  calculatingOrbitDot: { backgroundColor: '#8DD1FF', borderRadius: 999, height: 16, position: 'absolute', shadowColor: '#67C4FF', shadowOpacity: 1, shadowRadius: 14, width: 16 },
+  calculatingOrbitDotBottom: { bottom: -8, left: 162 },
+  calculatingOrbitDotLeft: { left: -8, top: 118 },
+  calculatingOrbitDotRight: { right: -8, top: 118 },
+  calculatingOrbitDotTop: { left: 162, top: -8 },
+  calculatingOrbitInner: { borderColor: 'rgba(88,185,255,0.38)', borderRadius: 999, borderStyle: 'dotted', borderWidth: 1.2, height: 260, left: 37, position: 'absolute', top: 20, width: 260 },
+  calculatingOrbitOuter: { borderColor: 'rgba(88,185,255,0.62)', borderRadius: 999, borderWidth: 1, height: 300, left: 17, position: 'absolute', top: 0, width: 300 },
+  calculatingOrbitScene: { height: 300, marginTop: 46, position: 'relative', width: 334 },
+  calculatingQuestion: { color: 'rgba(255,255,255,0.62)', flex: 1, fontSize: 16, lineHeight: 31 },
+  calculatingQuestionRow: { alignItems: 'flex-start', flexDirection: 'row', gap: 18, width: '100%' },
+  calculatingRocket: { position: 'absolute', right: 58, shadowColor: '#58B9FF', shadowOpacity: 0.9, shadowRadius: 18, top: 92, transform: [{ rotate: '38deg' }] },
+  calculatingScreen: { backgroundColor: '#050607', flex: 1 },
+  calculatingStarOne: { backgroundColor: '#8DD1FF', borderRadius: 999, height: 3, left: 10, position: 'absolute', top: 22, width: 3 },
+  calculatingStarThree: { backgroundColor: '#8DD1FF', borderRadius: 999, height: 3, position: 'absolute', right: 14, top: 38, width: 3 },
+  calculatingStarTwo: { backgroundColor: '#8DD1FF', borderRadius: 999, height: 4, left: 46, position: 'absolute', top: 194, width: 4 },
+  calculatingTitle: { color: '#FFFFFF', fontSize: 34, fontWeight: '900', letterSpacing: 0, lineHeight: 48, textAlign: 'center', textShadowColor: 'rgba(255,255,255,0.34)', textShadowRadius: 14 },
+  calculatingTrail: { alignItems: 'center', flexDirection: 'row', gap: 10, left: 138, position: 'absolute', top: 170, transform: [{ rotate: '-24deg' }] },
+  calculatingTrailDot: { backgroundColor: '#8DD1FF', borderRadius: 999, height: 4, shadowColor: '#58B9FF', shadowOpacity: 0.8, shadowRadius: 8, width: 4 },
   dateDot: { color: 'rgba(255,255,255,0.5)', fontSize: 22, fontWeight: '800' },
   dateInput: { color: '#FFFFFF', fontSize: 20, fontWeight: '800', letterSpacing: 0, padding: 0, textAlign: 'center' },
   dateInputWrap: { alignItems: 'center', borderColor: 'rgba(255,255,255,0.26)', borderRadius: 16, borderWidth: 1, gap: 5, height: 78, justifyContent: 'center', width: 76 },
   dateLabel: { color: 'rgba(255,255,255,0.52)', fontSize: 12 },
   disabledButton: { opacity: 0.42 },
-  divider: { backgroundColor: 'rgba(255,255,255,0.16)', flex: 1, height: 1 },
-  dividerRow: { alignItems: 'center', flexDirection: 'row', gap: 18, marginTop: 8, width: '100%' },
-  dividerText: { color: 'rgba(255,255,255,0.58)', fontSize: 14 },
+  divider: { backgroundColor: 'rgba(255,255,255,0.2)', flex: 1, height: 1 },
+  dividerRow: { alignItems: 'center', flexDirection: 'row', gap: 18, marginTop: 24, width: '100%' },
+  dividerText: { color: 'rgba(255,255,255,0.72)', fontSize: 14 },
   earthGlow: { backgroundColor: 'rgba(255,255,255,0.12)', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 999, borderWidth: 1, height: 260, opacity: 0.42, position: 'absolute', top: 276, width: 260 },
   emotionalLine: { bottom: 24, color: 'rgba(255,255,255,0.62)', fontSize: 13, letterSpacing: 0, position: 'absolute', textAlign: 'center' },
   flex: { flex: 1 },
@@ -1090,6 +1559,46 @@ const styles = StyleSheet.create({
   glass: { backgroundColor: 'rgba(15,16,22,0.74)', borderColor: 'rgba(255,255,255,0.24)', borderRadius: 28, borderWidth: 1, overflow: 'hidden', shadowColor: '#FFFFFF', shadowOpacity: 0.14, shadowRadius: 22, width: '100%' },
   halfCard: { flex: 1, minHeight: 230, padding: 18 },
   headerSpacer: { width: 36 },
+  appleHealthIcon: { alignItems: 'center', alignSelf: 'center', backgroundColor: '#FFFFFF', borderRadius: 26, height: 104, justifyContent: 'center', marginTop: 42, shadowColor: '#FFFFFF', shadowOffset: { height: 14, width: 0 }, shadowOpacity: 0.2, shadowRadius: 26, width: 104 },
+  appleHealthIconCompact: { borderRadius: 22, height: 82, marginTop: 22, width: 82 },
+  appleHealthIconTiny: { borderRadius: 18, height: 68, marginTop: 12, width: 68 },
+  healthBackButton: { alignItems: 'center', height: 44, justifyContent: 'center', left: 16, position: 'absolute', top: Platform.select({ ios: 58, default: 28 }), width: 44, zIndex: 4 },
+  healthBenefitIcon: { width: 48 },
+  healthBenefitList: { gap: 24, marginTop: 34, width: '100%' },
+  healthBenefitListCompact: { gap: 16, marginTop: 22 },
+  healthBenefitListTiny: { gap: 12, marginTop: 14 },
+  healthBenefitRow: { alignItems: 'center', flexDirection: 'row', gap: 14, width: '100%' },
+  healthBenefitRowTiny: { gap: 10 },
+  healthBenefitText: { color: 'rgba(255,255,255,0.78)', flex: 1, fontSize: 14, fontWeight: '500', lineHeight: 21 },
+  healthBenefitTextCompact: { fontSize: 13, lineHeight: 19 },
+  healthBenefitTextTiny: { fontSize: 11, lineHeight: 16 },
+  healthConnectActions: { gap: 12, marginTop: 'auto', paddingTop: 14, width: '100%' },
+  healthConnectActionsCompact: { gap: 8, paddingTop: 10 },
+  healthConnectActionsTiny: { gap: 4, paddingTop: 6 },
+  healthConnectButton: { alignItems: 'center', backgroundColor: '#8992A2', borderRadius: 999, height: 56, justifyContent: 'center', shadowColor: '#AEB7C8', shadowOffset: { height: 10, width: 0 }, shadowOpacity: 0.18, shadowRadius: 22, width: '100%' },
+  healthConnectButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  healthConnectContent: { alignItems: 'center', flex: 1, paddingBottom: 8, paddingHorizontal: 38, paddingTop: 24 },
+  healthConnectContentCompact: { paddingBottom: 4, paddingHorizontal: 30, paddingTop: 14 },
+  healthConnectContentTiny: { paddingBottom: 0, paddingHorizontal: 28, paddingTop: 6 },
+  healthConnectHeader: { alignItems: 'center', marginTop: 36, width: '100%' },
+  healthConnectHeaderCompact: { marginTop: 20 },
+  healthConnectHeaderTiny: { marginTop: 12 },
+  healthConnectLater: { alignItems: 'center', minHeight: 30, justifyContent: 'center' },
+  healthConnectLaterText: { color: '#8EA5D2', fontSize: 13, fontWeight: '500' },
+  healthConnectLogo: { height: 54, width: 232 },
+  healthConnectLogoCompact: { height: 40, width: 190 },
+  healthConnectLogoTiny: { height: 32, width: 158 },
+  healthConnectScreen: { backgroundColor: '#050607', flex: 1 },
+  healthConnectStatus: { alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.06)', borderColor: 'rgba(255,255,255,0.12)', borderRadius: 18, borderWidth: 1, flexDirection: 'row', gap: 10, marginTop: 14, paddingHorizontal: 16, paddingVertical: 10, width: '100%' },
+  healthConnectStatusCompact: { marginTop: 8, paddingVertical: 7 },
+  healthConnectStatusText: { color: 'rgba(255,255,255,0.76)', flex: 1, fontSize: 14, lineHeight: 20 },
+  healthConnectSwipeSurface: { flex: 1 },
+  healthConnectSubtitle: { color: 'rgba(255,255,255,0.74)', fontSize: 13, fontWeight: '400', lineHeight: 20, marginTop: 12, textAlign: 'center' },
+  healthConnectSubtitleCompact: { fontSize: 12, lineHeight: 18, marginTop: 8 },
+  healthConnectSubtitleTiny: { fontSize: 11, lineHeight: 16, marginTop: 5 },
+  healthConnectTitle: { color: '#FFFFFF', fontSize: 26, fontWeight: '800', letterSpacing: 0, lineHeight: 33, textAlign: 'center', textShadowColor: 'rgba(255,255,255,0.38)', textShadowRadius: 12 },
+  healthConnectTitleCompact: { fontSize: 22, lineHeight: 28 },
+  healthConnectTitleTiny: { fontSize: 20, lineHeight: 25 },
   healthIcon: { alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 16, height: 62, justifyContent: 'center', width: 62 },
   healthIconWrap: { alignItems: 'center', borderColor: 'rgba(255,255,255,0.22)', borderRadius: 999, borderStyle: 'dashed', borderWidth: 1, height: 94, justifyContent: 'center', width: 94 },
   healthResultCard: { backgroundColor: 'rgba(169,167,255,0.1)', borderColor: 'rgba(169,167,255,0.24)', borderRadius: 16, borderWidth: 1, padding: 14, width: '100%' },
@@ -1104,9 +1613,9 @@ const styles = StyleSheet.create({
   heroTitle: { color: '#FFFFFF', fontSize: 43, fontWeight: '800', letterSpacing: 0, marginTop: 14 },
   jupiter: { backgroundColor: '#C6B199', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 999, borderWidth: 1, height: 300, opacity: 0.88, position: 'absolute', right: -128, shadowColor: '#FFFFFF', shadowOpacity: 0.4, shadowRadius: 32, top: 34, width: 300 },
   jupiterSplash: { bottom: 52, height: 84, left: 16, width: 84 },
-  fieldLabel: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
+  fieldLabel: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
   floatingBackButton: { alignItems: 'center', height: 42, justifyContent: 'center', left: 18, position: 'absolute', top: 18, width: 42, zIndex: 5 },
-  forgotPasswordText: { color: 'rgba(255,255,255,0.76)', fontSize: 13, textDecorationLine: 'underline' },
+  forgotPasswordText: { color: '#7EA2FF', fontSize: 13, fontWeight: '600' },
   logoBlock: { alignItems: 'center', width: '100%' },
   logoCompact: { alignItems: 'center', width: 210 },
   logoLarge: { alignItems: 'center', width: 260 },
@@ -1116,15 +1625,26 @@ const styles = StyleSheet.create({
   logoText: { color: '#FFFFFF', fontFamily: 'Exo 2', fontSize: 54, fontWeight: '200', letterSpacing: 8.64, lineHeight: 64, textAlign: 'center' },
   logoTextCompact: { color: '#FFFFFF', fontFamily: 'Exo 2', fontSize: 27, fontWeight: '200', letterSpacing: 4.32, lineHeight: 34, textAlign: 'center' },
   logoTextLarge: { color: '#FFFFFF', fontFamily: 'Exo 2', fontSize: 33, fontWeight: '200', letterSpacing: 5.28, lineHeight: 40, textAlign: 'center' },
-  loginButton: { alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 15, justifyContent: 'center', minHeight: 48, width: '100%' },
-  loginButtonText: { color: '#09090B', fontSize: 15, fontWeight: '900' },
-  loginDescription: { color: 'rgba(255,255,255,0.82)', fontSize: 14, lineHeight: 21, marginTop: 8 },
-  loginField: { gap: 9, width: '100%' },
-  loginForm: { gap: 18, width: '100%' },
+  loginBrandImage: { alignSelf: 'center', height: 64, marginTop: 18, width: 265 },
+  loginButton: { alignItems: 'center', backgroundColor: '#8E96A6', borderRadius: 16, height: 52, justifyContent: 'center', marginTop: 22, shadowColor: '#FFFFFF', shadowOffset: { height: 10, width: 0 }, shadowOpacity: 0.14, shadowRadius: 20, width: '100%' },
+  loginButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  loginCheckbox: { alignItems: 'center', borderColor: 'rgba(255,255,255,0.34)', borderRadius: 5, borderWidth: 1.4, height: 20, justifyContent: 'center', width: 20 },
+  loginCheckboxChecked: { backgroundColor: '#FFFFFF', borderColor: '#FFFFFF' },
+  loginCheckboxRow: { alignItems: 'center', flexDirection: 'row', gap: 10 },
+  loginContent: { flexGrow: 1, paddingBottom: 24, paddingHorizontal: 36, paddingTop: 4 },
+  loginDescription: { color: 'rgba(255,255,255,0.72)', fontSize: 14, lineHeight: 21, marginTop: 8, textAlign: 'center' },
+  loginField: { gap: 10, width: '100%' },
+  loginForm: { gap: 22, marginTop: 34, width: '100%' },
   loginGlassPanel: { backgroundColor: 'rgba(255,255,255,0.16)', borderColor: 'rgba(255,255,255,0.42)', borderWidth: 1.2, paddingHorizontal: 26, paddingVertical: 30, shadowColor: '#FFFFFF', shadowOffset: { height: 10, width: 0 }, shadowOpacity: 0.28, shadowRadius: 30 },
-  loginHeader: { alignItems: 'center', width: '100%' },
+  loginHeader: { alignItems: 'center', marginTop: 34, width: '100%' },
+  loginInputWrap: { alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.07)', borderColor: 'rgba(255,255,255,0.22)', borderRadius: 13, borderWidth: 1.2, flexDirection: 'row', gap: 16, height: 52, paddingHorizontal: 16, width: '100%' },
   loginLogoWrap: { alignItems: 'center', width: '100%' },
-  loginTitle: { color: '#FFFFFF', fontSize: 28, fontWeight: '900', lineHeight: 34, marginTop: 12, textShadowColor: 'rgba(255,255,255,0.4)', textShadowRadius: 14 },
+  loginOptionText: { color: 'rgba(255,255,255,0.82)', fontSize: 13 },
+  loginOptionsRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginTop: 18, width: '100%' },
+  loginScreen: { backgroundColor: '#050607', flex: 1 },
+  loginSwitchRow: { alignItems: 'center', flexDirection: 'row', gap: 4, justifyContent: 'center', marginTop: 22 },
+  loginTextInput: { color: '#FFFFFF', flex: 1, fontSize: 14, fontWeight: '500', letterSpacing: 0, padding: 0 },
+  loginTitle: { color: '#FFFFFF', fontSize: 28, fontWeight: '800', lineHeight: 35, textAlign: 'center', textShadowColor: 'rgba(255,255,255,0.4)', textShadowRadius: 14 },
   loginTitleGroup: { alignItems: 'center', width: '100%' },
   mainContent: { padding: 22, paddingBottom: 120 },
   mercury: { left: 84, top: 74 },
@@ -1141,6 +1661,29 @@ const styles = StyleSheet.create({
   nextGoalCopy: { color: 'rgba(255,255,255,0.68)', fontSize: 14, marginTop: 8 },
   nextGoalTitle: { color: '#FFFFFF', fontSize: 28, fontWeight: '800', marginTop: 10 },
   noticeDot: { backgroundColor: '#9D98FF', borderRadius: 999, height: 9, position: 'absolute', right: -1, top: 1, width: 9 },
+  onboardingActionArea: { alignItems: 'center', gap: 20, paddingBottom: 64, paddingHorizontal: 42, width: '100%' },
+  onboardingActionAreaCompact: { gap: 14, paddingBottom: 40 },
+  onboardingBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: '#050607', overflow: 'hidden' },
+  onboardingButton: { alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 999, height: 58, justifyContent: 'center', overflow: 'hidden', shadowColor: '#FFFFFF', shadowOffset: { height: 10, width: 0 }, shadowOpacity: 0.16, shadowRadius: 18, width: '100%' },
+  onboardingButtonText: { color: '#050607', fontSize: 17, fontWeight: '700', letterSpacing: 0 },
+  onboardingCarousel: { flexGrow: 0, height: 214, width: '100%' },
+  onboardingCopyArea: { alignItems: 'center', flex: 1, justifyContent: 'center', paddingTop: 18, width: '100%' },
+  onboardingCopyAreaCompact: { justifyContent: 'flex-start', paddingTop: 34 },
+  onboardingDot: { backgroundColor: '#34383D', borderRadius: 999, height: 7, width: 7 },
+  onboardingDotActive: { backgroundColor: '#7897F2', transform: [{ scale: 1.14 }] },
+  onboardingDots: { alignItems: 'center', flexDirection: 'row', gap: 10, marginTop: 35 },
+  onboardingGlowCenter: { backgroundColor: 'rgba(190,204,225,0.08)', borderRadius: 999, height: 420, left: -30, position: 'absolute', top: 260, transform: [{ rotate: '-10deg' }], width: 460 },
+  onboardingGlowTop: { backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 999, height: 260, position: 'absolute', right: -90, top: -40, width: 260 },
+  onboardingLoginLink: { color: '#89A7F2', fontSize: 15, fontWeight: '600', letterSpacing: 0, textAlign: 'center' },
+  onboardingLogoArea: { alignItems: 'center', height: 232, justifyContent: 'flex-end', paddingHorizontal: 28, width: '100%' },
+  onboardingLogoAreaCompact: { height: 190 },
+  onboardingLogoImage: { height: 64, width: 265 },
+  onboardingScreen: { backgroundColor: '#050607', flex: 1, justifyContent: 'space-between' },
+  onboardingSlide: { alignItems: 'center', height: 214, justifyContent: 'center', paddingHorizontal: 28 },
+  onboardingSlideIcon: { marginBottom: 16, opacity: 0.96 },
+  onboardingSubtitle: { color: 'rgba(255,255,255,0.68)', fontSize: 13, fontWeight: '400', lineHeight: 21, marginTop: 30, textAlign: 'center' },
+  onboardingTitle: { color: '#FFFFFF', fontSize: 34, fontWeight: '400', letterSpacing: 0, lineHeight: 42, textAlign: 'center' },
+  onboardingVignette: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.28)' },
   orbitOne: { borderColor: 'rgba(255,255,255,0.08)', borderRadius: 999, borderWidth: 1, height: 620, left: -120, position: 'absolute', top: 88, transform: [{ rotate: '-12deg' }], width: 620 },
   orbitTwo: { borderColor: 'rgba(255,255,255,0.06)', borderRadius: 999, borderWidth: 1, height: 760, left: -178, position: 'absolute', top: 38, transform: [{ rotate: '-12deg' }], width: 760 },
   originPanel: { gap: 8, marginTop: 16, padding: 16 },
@@ -1171,6 +1714,7 @@ const styles = StyleSheet.create({
   policyText: { flex: 1 },
   policyTitle: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
   pressed: { opacity: 0.72, transform: [{ scale: 0.99 }] },
+  plainSafe: { backgroundColor: '#050607' },
   primaryButton: { alignItems: 'center', backgroundColor: 'rgba(104,103,172,0.38)', borderColor: 'rgba(197,196,255,0.45)', borderRadius: 18, borderWidth: 1, flexDirection: 'row', justifyContent: 'center', minHeight: 56, paddingHorizontal: 20, shadowColor: '#8F8AFF', shadowOpacity: 0.5, shadowRadius: 16, width: '100%' },
   primaryButtonText: { color: '#FFFFFF', flex: 1, fontSize: 17, fontWeight: '800', textAlign: 'center' },
   progressFill: { backgroundColor: '#DCD9FF', borderRadius: 999, height: '100%', shadowColor: '#DCD9FF', shadowOpacity: 0.85, shadowRadius: 8, width: '67%' },
@@ -1214,8 +1758,9 @@ const styles = StyleSheet.create({
   shaderVignette: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.32)' },
   signupAccent: { color: '#AFAAFF', fontWeight: '800' },
   signupLinkButton: { alignItems: 'center', alignSelf: 'flex-start', borderRadius: 14, minHeight: 38, justifyContent: 'center', paddingHorizontal: 4 },
-  signupLinkText: { color: 'rgba(255,255,255,0.76)', fontSize: 13, textDecorationLine: 'underline' },
-  signupText: { color: 'rgba(255,255,255,0.7)', fontSize: 15 },
+  signupLinkText: { color: '#7EA2FF', fontSize: 13, fontWeight: '800' },
+  signupText: { color: 'rgba(255,255,255,0.78)', fontSize: 13 },
+  socialAuthRow: { flexDirection: 'row', gap: 20, marginTop: 24, width: '100%' },
   solarOrbit: { borderColor: 'rgba(255,255,255,0.18)', borderRadius: 999, borderWidth: 1, position: 'absolute' },
   solarOrbitOne: { height: 210, width: 210 },
   solarOrbitThree: { height: 430, width: 430 },
@@ -1247,6 +1792,23 @@ const styles = StyleSheet.create({
   timelineTitle: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
   tip: { color: 'rgba(255,255,255,0.72)', fontSize: 13, marginTop: 12, textAlign: 'center' },
   topStar: { color: '#FFFFFF', fontSize: 24, marginBottom: 14, textAlign: 'center', textShadowColor: '#FFFFFF', textShadowRadius: 16 },
+  termsActionArea: { alignItems: 'center', gap: 22, marginTop: 58, paddingHorizontal: 0, width: '100%' },
+  termsActionAreaCompact: { gap: 16, marginTop: 34 },
+  termsContent: { backgroundColor: '#050607', flex: 1, paddingBottom: 38, paddingHorizontal: 36, paddingTop: 28 },
+  termsContentCompact: { paddingBottom: 26, paddingHorizontal: 30, paddingTop: 18 },
+  termsDivider: { backgroundColor: 'rgba(255,255,255,0.26)', height: 1, marginVertical: 30, width: '100%' },
+  termsHeader: { alignItems: 'center', marginTop: 58 },
+  termsHeaderCompact: { marginTop: 34 },
+  termsLaterLink: { color: '#8FA8D8', fontSize: 14, fontWeight: '500', textAlign: 'center' },
+  termsList: { marginTop: 52, width: '100%' },
+  termsListCompact: { marginTop: 34 },
+  termsLogoImage: { height: 63, width: 260 },
+  termsLogoWrap: { alignItems: 'center', width: '100%' },
+  termsPrimaryButton: { alignItems: 'center', backgroundColor: '#8C95A5', borderRadius: 999, height: 60, justifyContent: 'center', shadowColor: '#FFFFFF', shadowOffset: { height: 10, width: 0 }, shadowOpacity: 0.13, shadowRadius: 18, width: '100%' },
+  termsPrimaryButtonDisabled: { opacity: 0.52 },
+  termsPrimaryButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  termsSubtitle: { color: 'rgba(255,255,255,0.7)', fontSize: 14, lineHeight: 21, marginTop: 18, textAlign: 'center' },
+  termsTitle: { color: '#FFFFFF', fontSize: 28, fontWeight: '800', lineHeight: 35, textAlign: 'center' },
   passwordHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', width: '100%' },
   textInputGlass: { backgroundColor: 'rgba(255,255,255,0.08)', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 13, borderWidth: 1, color: '#FFFFFF', fontSize: 14, minHeight: 46, paddingHorizontal: 13 },
   venus: { height: 28, right: 92, top: 138, width: 28 },
